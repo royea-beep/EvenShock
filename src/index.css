@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+
+  /* Choice palette — a matched set, not random */
+  --color-rock: #2d6cdf;
+  --color-rock-dark: #1e4fa8;
+  --color-paper: #f2a900;
+  --color-paper-dark: #c78600;
+  --color-scissors: #ff5c5c;
+  --color-scissors-dark: #d63d3d;
+
+  --color-win: #2ecc71;
+  --color-lose: #ff5c5c;
+  --color-tie: #94a3b8;
+}
+
+html,
+body,
+#root {
+  min-height: 100dvh;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

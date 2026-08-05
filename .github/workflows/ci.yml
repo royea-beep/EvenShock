@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+      # Deploys dist/ to a cPanel host over SFTP. Only runs on pushes to main
+      # (never on PRs) so a branch can never accidentally go live.
+      # Needs these secrets set in Settings -> Secrets and variables -> Actions:
+      #   CPANEL_SFTP_HOST, CPANEL_SFTP_PORT, CPANEL_SFTP_USERNAME,
+      #   CPANEL_SFTP_PASSWORD, CPANEL_SFTP_REMOTE_PATH
+      - name: Deploy to cPanel (SFTP)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
+        with:
+          server: ${{ secrets.CPANEL_SFTP_HOST }}
+          port: ${{ secrets.CPANEL_SFTP_PORT }}
+          username: ${{ secrets.CPANEL_SFTP_USERNAME }}
+          password: ${{ secrets.CPANEL_SFTP_PASSWORD }}
+          local_path: './dist/*'
+          remote_path: ${{ secrets.CPANEL_SFTP_REMOTE_PATH }}
+          sftp_only: true
