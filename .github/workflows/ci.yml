@@ -21,19 +21,21 @@ jobs:
       - run: npm run lint
       - run: npm run build
 
-      # Deploys dist/ to a cPanel host over SFTP. Only runs on pushes to main
-      # (never on PRs) so a branch can never accidentally go live.
+      # Deploys dist/ to a cPanel host over plain FTP (port 21), matching the
+      # account's actual working setup (secure=false). Only runs on pushes to
+      # main (never on PRs) so a branch can never accidentally go live.
       # Needs these secrets set in Settings -> Secrets and variables -> Actions:
-      #   CPANEL_SFTP_HOST, CPANEL_SFTP_PORT, CPANEL_SFTP_USERNAME,
-      #   CPANEL_SFTP_PASSWORD, CPANEL_SFTP_REMOTE_PATH
-      - name: Deploy to cPanel (SFTP)
+      #   CPANEL_FTP_HOST, CPANEL_FTP_PORT, CPANEL_FTP_USERNAME,
+      #   CPANEL_FTP_PASSWORD, CPANEL_FTP_REMOTE_PATH (no trailing slash, e.g.
+      #   /public_html/evenshock)
+      - name: Deploy to cPanel (FTP)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.CPANEL_SFTP_HOST }}
-          port: ${{ secrets.CPANEL_SFTP_PORT }}
-          username: ${{ secrets.CPANEL_SFTP_USERNAME }}
-          password: ${{ secrets.CPANEL_SFTP_PASSWORD }}
-          local_path: './dist/*'
-          remote_path: ${{ secrets.CPANEL_SFTP_REMOTE_PATH }}
-          sftp_only: true
+          server: ${{ secrets.CPANEL_FTP_HOST }}
+          port: ${{ secrets.CPANEL_FTP_PORT || 21 }}
+          protocol: ftp
+          username: ${{ secrets.CPANEL_FTP_USERNAME }}
+          password: ${{ secrets.CPANEL_FTP_PASSWORD }}
+          local-dir: ./dist/
+          server-dir: ${{ secrets.CPANEL_FTP_REMOTE_PATH }}/
