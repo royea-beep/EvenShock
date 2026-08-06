@@ -19,6 +19,8 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
+      # Theme token parity — a theme missing a token breaks silently at runtime.
+      - run: npm test
       - run: npm run build
 
       # Deploys dist/ to a cPanel host over plain FTP (port 21), matching the

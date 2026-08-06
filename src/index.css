@@ -1,19 +1,46 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import '@fontsource/press-start-2p/latin-400.css';
+@import './styles/themes.css';
 
-@theme {
-  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+/*
+ * `@theme inline` is load-bearing. With a plain `@theme`, Tailwind resolves
+ * each value ONCE against :root at build time, so utilities would freeze on
+ * whichever theme happened to be first and never react to a `data-theme`
+ * change. `inline` emits `var(--...)` into the utility itself, so the value is
+ * resolved by the cascade at runtime — which is what makes theme switching a
+ * single attribute change with no re-render, and what lets the Home screen
+ * render five differently-themed previews on one page.
+ */
+@theme inline {
+  --color-page: var(--surface-page);
+  --color-card: var(--surface-card);
+  --color-elevated: var(--surface-elevated);
 
-  /* Choice palette — a matched set, not random */
-  --color-rock: #2d6cdf;
-  --color-rock-dark: #1e4fa8;
-  --color-paper: #f2a900;
-  --color-paper-dark: #c78600;
-  --color-scissors: #ff5c5c;
-  --color-scissors-dark: #d63d3d;
+  --color-ink: var(--text-primary);
+  --color-muted: var(--text-muted);
+  --color-inverse: var(--text-inverse);
 
-  --color-win: #2ecc71;
-  --color-lose: #ff5c5c;
-  --color-tie: #94a3b8;
+  --color-rock: var(--choice-rock);
+  --color-rock-ink: var(--choice-rock-ink);
+  --color-paper: var(--choice-paper);
+  --color-paper-ink: var(--choice-paper-ink);
+  --color-scissors: var(--choice-scissors);
+  --color-scissors-ink: var(--choice-scissors-ink);
+
+  --color-win: var(--outcome-win);
+  --color-lose: var(--outcome-lose);
+  --color-tie: var(--outcome-tie);
+
+  --color-line: var(--border-color);
+
+  --radius-themed-sm: var(--radius-sm);
+  --radius-themed-md: var(--radius-md);
+  --radius-choice: var(--radius-choice);
+}
+
+/* Fresh visit with no stored preference gets theme #1. */
+:root {
+  color-scheme: light dark;
 }
 
 html,
@@ -24,6 +51,47 @@ body,
 
 body {
   margin: 0;
+  background-color: var(--surface-page);
+  background-image: var(--surface-page-image);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Display type picks up each theme's casing and tracking. */
+.display-type {
+  font-family: var(--font-display);
+  text-transform: var(--display-transform);
+  letter-spacing: var(--display-tracking);
+}
+
+/* Press Start 2P draws much larger than other faces at the same point size.
+   Scale the rem BASE rather than overriding .display-type's font-size: an
+   override there beats Tailwind's text-* utilities at equal specificity and
+   flattens the whole type scale (title ends up smaller than body copy).
+   Scaling the root keeps every size and spacing step proportional. */
+html[data-theme='pixel'] {
+  font-size: 68.75%;
+}
+
+[data-theme='pixel'] .display-type {
+  line-height: 1.7;
+}
+
+/* The picker previews scope a theme to a <div>, so the html-level rule above
+   doesn't reach them — keep their pixel label legible on its own terms. */
+[data-theme='pixel'] .theme-preview-label {
+  font-size: 0.55rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
