@@ -43,16 +43,16 @@ export function MatchEndScreen({ score, matchWinner, onPlayAgain }: MatchEndScre
           initial={reducedMotion ? { scale: 1 } : { scale: 0.8 }}
           animate={{ scale: 1 }}
           transition={{ type: 'spring', stiffness: 200, damping: 12 }}
-          className={`text-4xl font-extrabold ${playerWon ? 'text-win' : 'text-slate-500'}`}
+          className={`display-type text-4xl font-extrabold ${playerWon ? 'text-win' : 'text-muted'}`}
         >
           {bannerText}
         </motion.h2>
 
         <div className="space-y-1">
-          <p className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+          <p className="display-type text-sm font-semibold text-muted">
             {copy.matchEnd.finalScoreLabel}
           </p>
-          <p className="text-3xl font-bold text-slate-700">
+          <p className="display-type text-3xl font-bold text-ink">
             {score.player} – {score.opponent}
           </p>
         </div>
@@ -62,8 +62,15 @@ export function MatchEndScreen({ score, matchWinner, onPlayAgain }: MatchEndScre
           onClick={onPlayAgain}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          className={`rounded-full px-10 py-4 text-lg font-bold text-white shadow-lg ${
-            playerWon ? 'bg-scissors shadow-scissors/40' : 'bg-slate-700'
+          style={{
+            borderRadius: 'var(--radius-themed-md)',
+            boxShadow: 'var(--shadow-card)',
+            borderWidth: 'var(--border-width)',
+            borderColor: 'var(--border-color)',
+            borderStyle: 'var(--border-style)',
+          }}
+          className={`display-type cursor-pointer px-10 py-4 text-lg font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current ${
+            playerWon ? 'bg-scissors text-scissors-ink' : 'bg-elevated text-ink'
           }`}
         >
           {copy.matchEnd.playAgainButton}

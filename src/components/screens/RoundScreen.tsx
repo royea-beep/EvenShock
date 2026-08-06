@@ -18,6 +18,14 @@ const FLASH_CLASSES: Record<RoundOutcome, string> = {
   tie: 'bg-tie',
 };
 
+/* Outcome is carried by a glyph as well as color, so win/lose/tie stay
+   distinguishable for colorblind players in every theme. */
+const OUTCOME_MARK: Record<RoundOutcome, string> = {
+  win: '▲',
+  lose: '▼',
+  tie: '＝',
+};
+
 const OUTCOME_TEXT_CLASSES: Record<RoundOutcome, string> = {
   win: 'text-win',
   lose: 'text-lose',
@@ -91,12 +99,12 @@ export function RoundScreen({
         exit={{ opacity: 0, y: -12 }}
         className="flex flex-col items-center gap-8 text-center"
       >
-        <p className="text-lg font-semibold text-slate-600">{copy.game.prompt}</p>
+        <p className="display-type text-lg font-semibold text-muted">{copy.game.prompt}</p>
         <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10">
           {CHOICES.map((choice) => (
             <div key={choice} className="flex flex-col items-center gap-3">
               <ChoiceButton choice={choice} onSelect={onPick} />
-              <span className="text-sm font-semibold text-slate-500">
+              <span className="display-type text-sm font-semibold text-muted">
                 {copy.choices[choice]}
               </span>
             </div>
@@ -115,7 +123,8 @@ export function RoundScreen({
           <motion.div
             key={`flash-${roundNumber}`}
             aria-hidden="true"
-            className={`pointer-events-none absolute inset-0 rounded-3xl ${FLASH_CLASSES[roundResult]}`}
+            style={{ borderRadius: 'var(--radius-themed-md)' }}
+            className={`pointer-events-none absolute inset-0 ${FLASH_CLASSES[roundResult]}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: [0, 0.35, 0] }}
             transition={{ duration: 0.6, times: [0, 0.18, 1], ease: 'easeOut' }}
@@ -138,7 +147,7 @@ export function RoundScreen({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.1 }}
-              className="text-2xl font-extrabold uppercase tracking-wide text-slate-700"
+              className="display-type text-2xl font-extrabold text-ink"
             >
               {copy.game.countdown[beatIndex]}
             </motion.p>
@@ -148,7 +157,7 @@ export function RoundScreen({
               initial={{ opacity: 0, scale: reducedMotion ? 1 : 1.4 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.14, ease: 'easeOut' }}
-              className="text-3xl font-black uppercase tracking-wide text-slate-800"
+              className="display-type text-3xl font-black text-ink"
             >
               {copy.game.countdown[SHAKE_BEATS]}
             </motion.p>
@@ -163,15 +172,15 @@ export function RoundScreen({
               {/* Outcome is announced as text, so it never depends on color alone. */}
               <p
                 aria-live="polite"
-                className={`text-3xl font-extrabold ${roundResult ? OUTCOME_TEXT_CLASSES[roundResult] : ''}`}
+                className={`display-type text-3xl font-extrabold ${roundResult ? OUTCOME_TEXT_CLASSES[roundResult] : ''}`}
               >
-                {roundResult ? copy.roundResult.outcome[roundResult] : ''}
+                {roundResult ? `${OUTCOME_MARK[roundResult]} ${copy.roundResult.outcome[roundResult]}` : ''}
               </p>
-              <div className="flex items-center gap-2 text-slate-500">
-                <span className="text-sm font-semibold uppercase tracking-wide">
+              <div className="flex items-center gap-2 text-muted">
+                <span className="display-type text-sm font-semibold">
                   {copy.roundResult.scoreLabel}
                 </span>
-                <span className="text-lg font-bold text-slate-700">
+                <span className="display-type text-lg font-bold text-ink">
                   {score.player} – {score.opponent}
                 </span>
               </div>
@@ -188,7 +197,14 @@ export function RoundScreen({
           transition={{ duration: 0.2 }}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          className="rounded-full bg-slate-800 px-8 py-3 text-base font-bold text-white shadow-lg"
+          style={{
+            borderRadius: 'var(--radius-themed-md)',
+            boxShadow: 'var(--shadow-card)',
+            borderWidth: 'var(--border-width)',
+            borderColor: 'var(--border-color)',
+            borderStyle: 'var(--border-style)',
+          }}
+          className="display-type cursor-pointer bg-elevated px-8 py-3 text-base font-bold text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
         >
           {matchStatus === 'complete'
             ? copy.roundResult.seeResultsButton

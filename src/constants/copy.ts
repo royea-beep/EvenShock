@@ -49,4 +49,8 @@ export const copy = {
     mute: 'Mute sound effects',
     unmute: 'Unmute sound effects',
   },
+  theme: {
+    label: 'Pick a look',
+    selectedMark: '● SELECTED',
+  },
 } as const;

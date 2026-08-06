@@ -13,7 +13,14 @@ export function MuteToggle({ muted, onToggle }: MuteToggleProps) {
       aria-pressed={muted}
       aria-label={muted ? copy.sound.unmute : copy.sound.mute}
       title={muted ? copy.sound.unmute : copy.sound.mute}
-      className="fixed right-4 top-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-white/80 text-slate-600 shadow-md ring-1 ring-slate-200 backdrop-blur transition-colors hover:bg-white hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
+      style={{
+        borderRadius: 'var(--radius-themed-md)',
+        borderWidth: 'var(--border-width)',
+        borderColor: 'var(--border-color)',
+        borderStyle: 'var(--border-style)',
+        boxShadow: 'var(--shadow-card)',
+      }}
+      className="fixed right-4 top-4 z-40 flex h-11 w-11 cursor-pointer items-center justify-center bg-elevated text-ink transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
     >
       <SpeakerIcon muted={muted} />
     </button>

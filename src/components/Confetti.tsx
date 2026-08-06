@@ -1,13 +1,17 @@
 import { useEffect, useRef } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import { CHOICE_COLORS } from '../constants/palette';
+import { readColorToken } from '../utils/themeTokens';
 
-const COLORS = [
-  CHOICE_COLORS.rock.base,
-  CHOICE_COLORS.paper.base,
-  CHOICE_COLORS.scissors.base,
-  '#2ecc71',
-];
+/** Confetti draws to canvas, so it needs concrete colors — resolved from the
+ *  active theme's tokens at burst time rather than hardcoded. */
+function themeColors(): string[] {
+  return [
+    readColorToken('--choice-rock'),
+    readColorToken('--choice-paper'),
+    readColorToken('--choice-scissors'),
+    readColorToken('--outcome-win'),
+  ];
+}
 
 const PARTICLE_COUNT = 90;
 const DURATION_MS = 2600;
@@ -47,6 +51,7 @@ export function Confetti({ active }: { active: boolean }) {
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
 
+    const COLORS = themeColors();
     const originX = width / 2;
     const originY = height * 0.38;
 

@@ -19,6 +19,8 @@ export type SoundName =
   | 'roundTie'
   | 'matchWin';
 
+import { readThemeAudio } from './themeTokens';
+
 const STORAGE_KEY = 'evenshock:muted';
 
 let ctx: AudioContext | null = null;
@@ -98,9 +100,10 @@ interface ToneSpec {
   type?: OscillatorType;
   at?: number;
   slideTo?: number;
+  detune?: number;
 }
 
-function tone({ freq, dur, gain, type = 'sine', at = 0, slideTo }: ToneSpec): void {
+function tone({ freq, dur, gain, type = 'sine', at = 0, slideTo, detune = 0 }: ToneSpec): void {
   if (!ctx || !master) return;
   if (activeVoices >= MAX_VOICES) return;
 
@@ -109,6 +112,11 @@ function tone({ freq, dur, gain, type = 'sine', at = 0, slideTo }: ToneSpec): vo
   const env = ctx.createGain();
 
   osc.type = type;
+  try {
+    osc.detune.setValueAtTime(detune, start);
+  } catch {
+    // detune unsupported — pitch is still correct without it.
+  }
   osc.frequency.setValueAtTime(freq, start);
   if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, start + dur);
 
@@ -188,39 +196,45 @@ export function play(name: SoundName): void {
 
   if (!ensureContext()) return;
 
+  // Audio character comes from the active theme: the waveform and the base
+  // frequency every pitch below is derived from. Intervals stay fixed so each
+  // sound keeps its meaning (rising = win, falling = lose) in every theme.
+  const { wave, baseFreq: f, detune } = readThemeAudio();
+  const t = wave;
+
   try {
     switch (name) {
       case 'select':
-        tone({ freq: 660, slideTo: 990, dur: 0.09, gain: 0.16, type: 'triangle' });
+        tone({ freq: f, slideTo: f * 1.5, dur: 0.09, gain: 0.16, type: t, detune });
         break;
 
       // Repeats 3x per round, so it stays deliberately quiet and short.
       case 'tick':
-        tone({ freq: 320, dur: 0.05, gain: 0.05, type: 'sine' });
+        tone({ freq: f * 0.5, dur: 0.05, gain: 0.05, type: t, detune });
         break;
 
       case 'reveal':
         noise(0.12, 0.13);
-        tone({ freq: 180, slideTo: 90, dur: 0.16, gain: 0.14, type: 'triangle' });
+        tone({ freq: f * 0.28, slideTo: f * 0.14, dur: 0.16, gain: 0.14, type: t, detune });
         break;
 
       case 'roundWin':
-        tone({ freq: 523.25, dur: 0.11, gain: 0.15, type: 'triangle' }); // C5
-        tone({ freq: 783.99, dur: 0.18, gain: 0.15, type: 'triangle', at: 0.09 }); // G5
+        tone({ freq: f, dur: 0.11, gain: 0.15, type: t, detune });
+        tone({ freq: f * 1.5, dur: 0.18, gain: 0.15, type: t, at: 0.09, detune });
         break;
 
       case 'roundLose':
-        tone({ freq: 392, dur: 0.12, gain: 0.13, type: 'sawtooth' }); // G4
-        tone({ freq: 261.63, dur: 0.22, gain: 0.12, type: 'sawtooth', at: 0.1 }); // C4
+        tone({ freq: f * 0.75, dur: 0.12, gain: 0.13, type: t, detune });
+        tone({ freq: f * 0.5, dur: 0.22, gain: 0.12, type: t, at: 0.1, detune });
         break;
 
       case 'roundTie':
-        tone({ freq: 440, dur: 0.14, gain: 0.09, type: 'sine' }); // A4
+        tone({ freq: f * 0.84, dur: 0.14, gain: 0.09, type: t, detune });
         break;
 
       case 'matchWin':
-        [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
-          tone({ freq, dur: 0.2, gain: 0.15, type: 'triangle', at: i * 0.09 });
+        [1, 1.26, 1.5, 2].forEach((ratio, i) => {
+          tone({ freq: f * ratio, dur: 0.2, gain: 0.15, type: t, at: i * 0.09, detune });
         });
         break;
     }

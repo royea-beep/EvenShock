@@ -58,6 +58,28 @@ A round's picking, revealing, and result states are all **one** `RoundScreen`, d
 
 `useGame()` exposes `playerChoice`, `botChoice`, `roundResult`, `score`, `format`, `matchStatus`, and the actions to pick a choice, start a match, advance past a round result, and play again. `App.tsx` derives which screen to show from that state alone — there's no separate screen state to keep in sync.
 
+## Themes
+
+Five visual identities — Neon Arcade, Paper & Ink, Retro Pixel, Candy Pop, Cyber Terminal — picked on the Home screen before a match. Each is a complete identity: colors, page background, fonts, corner radii, shadow/glow, motion easing, and SFX character.
+
+The mechanism is `data-theme` + CSS custom properties. `useTheme()` writes one attribute onto `<html>`; the tokens cascade from there, so switching is instant, costs no React re-render, and can be scoped to any subtree — which is how the picker renders live previews of all five themes on one page.
+
+### Adding a new theme
+
+Two places to touch, nothing else:
+
+1. **`src/styles/themes.css`** — copy an existing `[data-theme='...']` block and give every token a new value. The canonical token list is documented in the comment at the top of that file. **Every theme must define every token**; a missing one resolves to an undefined variable and breaks silently, so `src/styles/themes.test.ts` asserts parity and will fail the build if you skip one.
+2. **`src/constants/themes.ts`** — add `{ id, name, blurb }` to the `THEMES` array. The `id` must match the `data-theme` value.
+
+Two things worth knowing when authoring:
+
+- Tailwind utilities are wired to the tokens with **`@theme inline`** in `src/index.css`. The `inline` is load-bearing: with a plain `@theme`, Tailwind resolves each value once against `:root` at build time, so utilities freeze on whichever theme came first and never react to a `data-theme` change.
+- Motion and audio character live in CSS alongside everything else (`--motion-ease`, `--motion-scale`, `--audio-wave`, `--audio-base-freq`, `--audio-detune`) and are read into JS by `src/utils/themeTokens.ts` — Framer Motion needs a bezier array and the Web Audio engine needs a waveform. Authoring a theme stays a single-file job.
+
+### Accessibility across themes
+
+Every theme clears **WCAG AA (4.5:1)** for primary text, muted text, outcome colors, and choice-icon-on-fill — verified by measuring computed colors in a browser, not by eye. Outcomes carry a shape marker (▲ win / ▼ lose / ＝ tie) alongside the color and the wording, so they stay distinguishable without color perception. `prefers-reduced-motion` is respected in all five, including the ones whose character is motion.
+
 ## Game rules
 
 - Rock beats Scissors, Scissors beats Paper, Paper beats Rock.

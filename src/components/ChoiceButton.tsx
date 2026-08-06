@@ -4,41 +4,56 @@ import { CHOICE_ICONS } from './icons';
 import { copy } from '../constants/copy';
 import { play } from '../utils/sound';
 
+/** Fill + icon color both come from theme tokens, so each theme picks its own trio. */
 const VARIANT_CLASSES: Record<Choice, string> = {
-  rock: 'bg-rock shadow-rock/40',
-  paper: 'bg-paper shadow-paper/40',
-  scissors: 'bg-scissors shadow-scissors/40',
+  rock: 'bg-rock text-rock-ink',
+  paper: 'bg-paper text-paper-ink',
+  scissors: 'bg-scissors text-scissors-ink',
 };
 
 interface ChoiceButtonProps {
   choice: Choice;
-  onSelect: (choice: Choice) => void;
+  onSelect?: (choice: Choice) => void;
   disabled?: boolean;
+  /** Non-interactive rendering for the theme picker previews. */
+  preview?: boolean;
 }
 
-export function ChoiceButton({ choice, onSelect, disabled }: ChoiceButtonProps) {
+export function ChoiceButton({ choice, onSelect, disabled, preview }: ChoiceButtonProps) {
   const Icon = CHOICE_ICONS[choice];
 
   const handleClick = () => {
-    if (disabled) return;
+    if (disabled || preview) return;
     play('select');
-    onSelect(choice);
+    onSelect?.(choice);
   };
+
+  const size = preview ? 'h-10 w-10' : 'h-28 w-28 sm:h-36 sm:w-36';
+  const iconSize = preview ? 'h-5 w-5' : 'h-14 w-14 sm:h-18 sm:w-18';
 
   return (
     <motion.button
       type="button"
-      disabled={disabled}
+      disabled={disabled || preview}
+      tabIndex={preview ? -1 : undefined}
+      aria-hidden={preview || undefined}
       onClick={handleClick}
-      aria-label={copy.choices[choice]}
-      whileHover={disabled ? undefined : { scale: 1.08 }}
-      whileTap={disabled ? undefined : { scale: 0.94 }}
+      aria-label={preview ? undefined : copy.choices[choice]}
+      whileHover={disabled || preview ? undefined : { scale: 1.08 }}
+      whileTap={disabled || preview ? undefined : { scale: 0.94 }}
       transition={{ type: 'spring', stiffness: 400, damping: 18 }}
-      className={`flex h-28 w-28 cursor-pointer items-center justify-center rounded-full text-white shadow-lg ring-4 ring-white/40 transition-opacity sm:h-36 sm:w-36 ${
+      style={{
+        borderRadius: 'var(--radius-choice)',
+        boxShadow: preview ? undefined : 'var(--shadow-choice), var(--glow-choice)',
+        borderWidth: 'var(--border-width)',
+        borderColor: 'var(--border-color)',
+        borderStyle: 'var(--border-style)',
+      }}
+      className={`flex ${size} shrink-0 items-center justify-center transition-opacity ${
         VARIANT_CLASSES[choice]
-      } ${disabled ? 'opacity-40' : ''}`}
+      } ${disabled && !preview ? 'opacity-40' : ''} ${preview ? '' : 'cursor-pointer'}`}
     >
-      <Icon className="h-14 w-14 sm:h-18 sm:w-18" />
+      <Icon className={iconSize} />
     </motion.button>
   );
 }

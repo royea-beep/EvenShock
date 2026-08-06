@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 import { useGame } from './hooks/useGame';
+import { useTheme } from './hooks/useTheme';
 import { useMuted } from './hooks/useMuted';
 import { getScreen } from './utils/getScreen';
 import { unlockAudio } from './utils/sound';
@@ -13,6 +14,7 @@ function App() {
   const game = useGame();
   const screen = getScreen(game);
   const { muted, toggleMuted } = useMuted();
+  const { theme, setTheme } = useTheme();
   const reducedMotion = useReducedMotion();
 
   const shakeControls = useAnimationControls();
@@ -40,7 +42,7 @@ function App() {
 
       <motion.main
         animate={shakeControls}
-        className="flex min-h-dvh items-center justify-center bg-slate-50 p-6"
+        className="flex min-h-dvh items-center justify-center p-6"
       >
         <div className="w-full max-w-xl">
           <AnimatePresence mode="wait">
@@ -50,6 +52,8 @@ function App() {
                 format={game.format}
                 onFormatChange={game.setFormat}
                 onStart={handleStart}
+                theme={theme}
+                onThemeChange={setTheme}
               />
             )}
 
