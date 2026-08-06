@@ -5,6 +5,5 @@ import type { UseGameReturn } from '../hooks/useGame';
 export function getScreen(game: UseGameReturn): Screen {
   if (game.matchStatus === 'idle') return 'home';
   if (game.showMatchEnd) return 'matchEnd';
-  if (game.botChoice === null) return 'game';
-  return 'roundResult';
+  return 'round';
 }

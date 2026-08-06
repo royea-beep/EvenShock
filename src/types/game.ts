@@ -7,8 +7,12 @@ export type RoundOutcome = 'win' | 'lose' | 'tie';
 
 export type MatchStatus = 'idle' | 'playing' | 'complete';
 
-/** Screen the SPA is currently showing. Drives which component App renders. */
-export type Screen = 'home' | 'game' | 'roundResult' | 'matchEnd';
+/**
+ * Screen the SPA is currently showing. Drives which component App renders.
+ * A round's picking / revealing / result states are all one screen, so the
+ * hands stay mounted through the reveal snap instead of being swapped out.
+ */
+export type Screen = 'home' | 'round' | 'matchEnd';
 
 export interface Score {
   player: number;

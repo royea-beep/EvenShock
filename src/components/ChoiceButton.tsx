@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import type { Choice } from '../types/game';
 import { CHOICE_ICONS } from './icons';
 import { copy } from '../constants/copy';
+import { play } from '../utils/sound';
 
 const VARIANT_CLASSES: Record<Choice, string> = {
   rock: 'bg-rock shadow-rock/40',
@@ -11,33 +12,33 @@ const VARIANT_CLASSES: Record<Choice, string> = {
 
 interface ChoiceButtonProps {
   choice: Choice;
-  onSelect?: (choice: Choice) => void;
-  size?: 'lg' | 'md';
+  onSelect: (choice: Choice) => void;
   disabled?: boolean;
-  selected?: boolean;
 }
 
-export function ChoiceButton({ choice, onSelect, size = 'lg', disabled, selected }: ChoiceButtonProps) {
+export function ChoiceButton({ choice, onSelect, disabled }: ChoiceButtonProps) {
   const Icon = CHOICE_ICONS[choice];
-  const dimension = size === 'lg' ? 'h-28 w-28 sm:h-36 sm:w-36' : 'h-20 w-20 sm:h-24 sm:w-24';
-  const iconSize = size === 'lg' ? 'h-14 w-14 sm:h-18 sm:w-18' : 'h-10 w-10 sm:h-12 sm:w-12';
+
+  const handleClick = () => {
+    if (disabled) return;
+    play('select');
+    onSelect(choice);
+  };
 
   return (
     <motion.button
       type="button"
       disabled={disabled}
-      onClick={() => onSelect?.(choice)}
+      onClick={handleClick}
       aria-label={copy.choices[choice]}
-      aria-pressed={selected}
-      whileHover={onSelect && !disabled ? { scale: 1.08 } : undefined}
-      whileTap={onSelect && !disabled ? { scale: 0.94 } : undefined}
-      animate={selected ? { scale: [1, 1.12, 1] } : { scale: 1 }}
-      transition={selected ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }}
-      className={`flex ${dimension} items-center justify-center rounded-full text-white shadow-lg ring-4 ring-white/40 transition-opacity ${VARIANT_CLASSES[choice]} ${
-        disabled && !selected ? 'opacity-40' : ''
-      } ${onSelect ? 'cursor-pointer' : 'cursor-default'}`}
+      whileHover={disabled ? undefined : { scale: 1.08 }}
+      whileTap={disabled ? undefined : { scale: 0.94 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+      className={`flex h-28 w-28 cursor-pointer items-center justify-center rounded-full text-white shadow-lg ring-4 ring-white/40 transition-opacity sm:h-36 sm:w-36 ${
+        VARIANT_CLASSES[choice]
+      } ${disabled ? 'opacity-40' : ''}`}
     >
-      <Icon className={iconSize} />
+      <Icon className="h-14 w-14 sm:h-18 sm:w-18" />
     </motion.button>
   );
 }

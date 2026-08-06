@@ -45,4 +45,8 @@ export const copy = {
     finalScoreLabel: 'Final score',
     playAgainButton: 'Play again',
   },
+  sound: {
+    mute: 'Mute sound effects',
+    unmute: 'Unmute sound effects',
+  },
 } as const;

@@ -24,23 +24,37 @@ npm run lint     # oxlint
 ```
 src/
   components/
-    icons/            Custom flat-fill SVG icons (Rock, Paper, Scissors)
-    screens/           One component per app screen (Home, Game, RoundResult, MatchEnd)
-    ChoiceButton.tsx   Shared colored circular choice button, interactive or display-only
+    icons/             Custom flat-fill SVG icons (Rock, Paper, Scissors)
+    screens/           Home, Round (picking → revealing → result), MatchEnd
+    ChoiceButton.tsx   Colored circular choice button used during picking
+    HandsFaceOff.tsx   The two hands: shake in unison, then snap to the reveal
+    Confetti.tsx       Hand-rolled canvas burst for a match win
+    MuteToggle.tsx     Persistent sound toggle
   hooks/
     useGame.ts         Single source of truth for all match/round state and actions
+    useMuted.ts        Mute state, persisted to localStorage
   utils/
     gameLogic.ts       Pure functions: round winner, tie rule, match-complete/winner checks
     getBotChoice.ts    The bot's move — isolated so it can be swapped for a real opponent
     getScreen.ts       Derives which screen to render from useGame's state
+    sound.ts           Web Audio SFX, synthesized (no audio files shipped)
   constants/
     copy.ts            All user-facing strings (kept out of components for future i18n)
-    palette.ts          Choice color tokens, mirrored in the Tailwind theme
-    gameConfig.ts       Timing constants (reveal/countdown duration)
+    palette.ts         Choice color tokens, mirrored in the Tailwind theme
+    gameConfig.ts      Reveal/beat timing constants
   types/
-    game.ts             Shared types (Choice, MatchFormat, RoundOutcome, Score, ...)
-  App.tsx                Wires useGame() to the four screens
+    game.ts            Shared types (Choice, MatchFormat, RoundOutcome, Score, ...)
+  App.tsx              Wires useGame() to the three screens
 ```
+
+A round's picking, revealing, and result states are all **one** `RoundScreen`, deliberately. The two hands stay mounted across the whole reveal, so the moment of truth is a snap of the same elements rather than a cross-fade between two screens.
+
+## Game feel
+
+- **Reveal:** three ~220ms pumps ("Rock… Paper… Scissors…") with both hands shaking in unison, then a snap on "Shoot!". The bot renders a neutral `?` until the snap — its choice doesn't exist client-side until then, so it can't be read early. Pick to outcome is ~840ms.
+- **Feedback:** green tint + winner scale-up on a win, red tint + a ~200ms page knock on a loss, neutral grey pulse on a tie, confetti on a match win, and a desaturated (not punishing) treatment on a match loss.
+- **Sound:** short SFX synthesized at runtime with the Web Audio API — no audio files, nothing to preload, nothing sampled. The context is only created from a real user gesture, so nothing trips browser autoplay policies, and any failure degrades to silence rather than breaking the game. Mute persists in localStorage.
+- **Accessibility:** `prefers-reduced-motion` drops the shake, the screen knock, the flashes and the confetti, leaving a plain crossfade. Every outcome is stated in text, so nothing depends on color alone.
 
 `useGame()` exposes `playerChoice`, `botChoice`, `roundResult`, `score`, `format`, `matchStatus`, and the actions to pick a choice, start a match, advance past a round result, and play again. `App.tsx` derives which screen to show from that state alone — there's no separate screen state to keep in sync.
 
