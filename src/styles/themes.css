@@ -6,163 +6,428 @@
    undefined variable and breaks silently — `themes.test.ts` asserts parity so
    that can't ship.
 
+   Seven themes are built around a generated art set (see src/assets/themes/);
+   their palettes are SAMPLED FROM THE ACTUAL IMAGERY — the background, the
+   subject and the highlight colours are lifted off the pixels rather than
+   invented, which is what makes the frame and the photograph read as one
+   object. Recorded per theme below as "sampled:".
+
+   `pixel` carries no art set and renders the built-in SVG icons instead.
+
    Selectors are plain attribute selectors (not `html[data-theme]`) on purpose:
    that lets a theme be scoped to any subtree, which is how the Home screen
-   renders live previews of all five themes at once.
+   renders every theme's preview at once.
 
    CANONICAL TOKENS
    ----------------
    Surfaces
-     --surface-page        Page background color (sits under --surface-page-image)
+     --surface-page        Page background colour (sits under --surface-page-image)
      --surface-page-image  Background treatment: gradient/pattern/texture, or `none`
      --surface-card        Cards and panels
      --surface-elevated    Raised elements (buttons, chips, the mute toggle)
    Text
      --text-primary        Body and headings. Must hit WCAG AA on --surface-page
      --text-muted          Secondary/labels. Must hit AA (4.5:1) on --surface-page
-     --text-inverse        Text sitting ON a choice color or elevated fill
-   Choices — each theme picks its own trio
-     --choice-rock / -paper / -scissors        Button fill
-     --choice-rock-ink / -paper-ink / -scissors-ink   Icon color on that fill
-   Outcomes (always paired with text, never color alone)
+     --text-inverse        Text sitting ON a choice colour or elevated fill
+   Choices — each theme picks its own trio.
+     Since the choice buttons now render ARTWORK, these no longer tint the
+     buttons; they drive the primary CTAs, the confetti and the accents, so they
+     still need AA against their -ink partner.
+     --choice-rock / -paper / -scissors        Accent fill
+     --choice-rock-ink / -paper-ink / -scissors-ink   Text/icon on that fill
+   Outcomes (always paired with text + a ▲/▼/＝ marker, never colour alone)
      --outcome-win / --outcome-lose / --outcome-tie
    Shape
      --radius-sm / --radius-md   Panel + control corner radii
-     --radius-choice             Choice-button radius (9999px round, or 0 for pixel)
-     --border-width              Border thickness for bordered treatments
-     --border-color              Border color
-     --border-style              solid / dashed / double ...
+     --radius-choice             Choice-button radius. Photographic sets use a
+                                 rounded RECTANGLE, not a circle: the art has no
+                                 alpha, so a circular mask crops wrists and
+                                 diagonal blades out of frame.
+     --border-width / --border-color / --border-style
    Type
-     --font-display        Headings, outcome text, the countdown
-     --font-body           Everything else
+     --font-display / --font-body
      --display-transform   text-transform for display type
      --display-tracking    letter-spacing for display type
    Depth
-     --shadow-card         Panel shadow
-     --shadow-choice       Choice-button shadow
-     --glow-choice         Extra glow layered on choice buttons (or `none`)
+     --shadow-card / --shadow-choice / --glow-choice
    Motion character (read in JS via readThemeMotion())
      --motion-ease         Four comma-separated cubic-bezier numbers
      --motion-scale        Duration multiplier: 1 = baseline, >1 slower
    Audio character (read in JS via readThemeAudio())
-     --audio-wave          Oscillator type: sine | square | sawtooth | triangle
+     --audio-wave          sine | square | sawtooth | triangle
      --audio-base-freq     Base frequency in Hz that SFX pitches derive from
      --audio-detune        Detune in cents applied to every voice
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   1. Neon Arcade — dark ground, hot pink + cyan, glow-heavy, punchy motion
-   Contrast note: neon pink on near-black is bumped lighter than a "true" neon
-   would be so body text clears AA.
+   1. Studio — set01_studio_hands
+   sampled: sweep #f1f1f1 · highlight #fefffe · shadow #4c413a · skin #ecbca3
+   Light, warm-neutral, editorial. Accents pulled from the skin midtones and
+   darkened until white type clears AA on them.
    -------------------------------------------------------------------------- */
-[data-theme='neon'] {
-  --surface-page: #0b0616;
-  --surface-page-image: radial-gradient(
-      circle at 20% 15%,
-      rgba(255, 45, 149, 0.22),
-      transparent 45%
-    ),
-    radial-gradient(circle at 85% 80%, rgba(34, 227, 255, 0.2), transparent 45%);
-  --surface-card: #170d2b;
-  --surface-elevated: #241540;
+[data-theme='studio'] {
+  --surface-page: #efedea;
+  --surface-page-image: radial-gradient(ellipse at 50% 0%, #ffffff 0%, transparent 60%);
+  --surface-card: #fbfaf8;
+  --surface-elevated: #ffffff;
 
-  --text-primary: #f4ecff;
-  --text-muted: #c9b8e8;
-  --text-inverse: #0b0616;
+  --text-primary: #1b1917;
+  --text-muted: #55504a;
+  --text-inverse: #ffffff;
 
-  --choice-rock: #22e3ff;
-  --choice-rock-ink: #04222b;
-  --choice-paper: #ffd23f;
-  --choice-paper-ink: #2b2000;
-  --choice-scissors: #ff2d95;
-  --choice-scissors-ink: #2b0016;
+  --choice-rock: #5c6670;
+  --choice-rock-ink: #ffffff;
+  --choice-paper: #8a5a2c;
+  --choice-paper-ink: #ffffff;
+  --choice-scissors: #9c4527;
+  --choice-scissors-ink: #ffffff;
 
-  --outcome-win: #4dffb8;
-  --outcome-lose: #ff6b8a;
-  --outcome-tie: #b8a6dd;
+  --outcome-win: #1c6b3c;
+  --outcome-lose: #a03020;
+  --outcome-tie: #55504a;
 
-  --radius-sm: 0.5rem;
-  --radius-md: 1rem;
-  --radius-choice: 9999px;
-  --border-width: 2px;
-  --border-color: rgba(255, 45, 149, 0.5);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.75rem;
+  --radius-choice: 1rem;
+  --border-width: 1px;
+  --border-color: #d6d1cb;
+  --border-style: solid;
+
+  --font-display: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: none;
+  --display-tracking: -0.01em;
+
+  --shadow-card: 0 8px 28px rgba(40, 33, 28, 0.14);
+  --shadow-choice: 0 10px 24px rgba(40, 33, 28, 0.22);
+  --glow-choice: none;
+
+  --motion-ease: 0.25, 0.8, 0.35, 1;
+  --motion-scale: 1;
+
+  --audio-wave: sine;
+  --audio-base-freq: 520;
+  --audio-detune: 0;
+}
+
+/* --------------------------------------------------------------------------
+   2. Classical Marble — set03_marble
+   sampled: ground #3e3c37 · shadow #2d2d2d · stone #cdcbc5 · warm mid #524944
+   -------------------------------------------------------------------------- */
+[data-theme='marble'] {
+  --surface-page: #33312d;
+  --surface-page-image: radial-gradient(ellipse at 50% 30%, rgba(205, 203, 197, 0.13), transparent 62%);
+  --surface-card: #3d3a35;
+  --surface-elevated: #4a463f;
+
+  --text-primary: #f3f0e9;
+  --text-muted: #c3bbae;
+  --text-inverse: #26241f;
+
+  --choice-rock: #b3a996;
+  --choice-rock-ink: #26241f;
+  --choice-paper: #cdcbc5;
+  --choice-paper-ink: #26241f;
+  --choice-scissors: #d8c3a0;
+  --choice-scissors-ink: #26241f;
+
+  --outcome-win: #86d9a4;
+  --outcome-lose: #f0897c;
+  --outcome-tie: #c3bbae;
+
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-choice: 0.5rem;
+  --border-width: 1px;
+  --border-color: #5b564d;
+  --border-style: solid;
+
+  --font-display: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-body: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --display-transform: uppercase;
+  --display-tracking: 0.08em;
+
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-choice: 0 12px 28px rgba(0, 0, 0, 0.5);
+  --glow-choice: none;
+
+  --motion-ease: 0.4, 0, 0.5, 1;
+  --motion-scale: 1.2;
+
+  --audio-wave: sine;
+  --audio-base-freq: 392;
+  --audio-detune: -6;
+}
+
+/* --------------------------------------------------------------------------
+   3. Liquid Chrome — set04_chrome
+   sampled: ground #181818 · mid #3b3b3b · steel highlight near-white
+   -------------------------------------------------------------------------- */
+[data-theme='chrome'] {
+  --surface-page: #121213;
+  --surface-page-image: radial-gradient(ellipse at 50% 35%, rgba(190, 205, 220, 0.12), transparent 60%);
+  --surface-card: #1c1c1e;
+  --surface-elevated: #292a2d;
+
+  --text-primary: #f4f5f7;
+  --text-muted: #b4b8bf;
+  --text-inverse: #0c0f13;
+
+  --choice-rock: #9fb3c8;
+  --choice-rock-ink: #0c0f13;
+  --choice-paper: #ccd2d9;
+  --choice-paper-ink: #0c0f13;
+  --choice-scissors: #8fa6bd;
+  --choice-scissors-ink: #0c0f13;
+
+  --outcome-win: #6ee7a8;
+  --outcome-lose: #ff8f7d;
+  --outcome-tie: #b4b8bf;
+
+  --radius-sm: 0.75rem;
+  --radius-md: 1.25rem;
+  --radius-choice: 1.75rem;
+  --border-width: 1px;
+  --border-color: #3a3d42;
   --border-style: solid;
 
   --font-display: system-ui, 'Segoe UI', Roboto, sans-serif;
   --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
   --display-transform: uppercase;
-  --display-tracking: 0.06em;
+  --display-tracking: 0.14em;
 
-  --shadow-card: 0 0 32px rgba(255, 45, 149, 0.28);
-  --shadow-choice: 0 0 24px rgba(0, 0, 0, 0.5);
-  --glow-choice: 0 0 28px currentColor;
+  --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.6);
+  --shadow-choice: 0 14px 30px rgba(0, 0, 0, 0.65);
+  --glow-choice: 0 0 22px rgba(190, 205, 220, 0.28);
 
   --motion-ease: 0.16, 1, 0.3, 1;
-  --motion-scale: 0.8;
+  --motion-scale: 0.85;
 
-  --audio-wave: square;
-  --audio-base-freq: 660;
-  --audio-detune: 6;
+  --audio-wave: triangle;
+  --audio-base-freq: 600;
+  --audio-detune: 4;
 }
 
 /* --------------------------------------------------------------------------
-   2. Paper & Ink — off-white stock, black linework, soft organic motion
+   4. X-Ray — set05_xray
+   sampled: ground #04090a · glow #9cc4cb · hot core #cbe5e2
+   Contrast note: the cyan is lifted well above a "true" film cyan so muted
+   text clears AA on near-black — the glow in the art carries the mood, the
+   type does not have to.
    -------------------------------------------------------------------------- */
-[data-theme='paper'] {
-  --surface-page: #f7f4ec;
+[data-theme='xray'] {
+  --surface-page: #04090a;
   --surface-page-image: repeating-linear-gradient(
-    0deg,
-    rgba(26, 24, 20, 0.035) 0px,
-    rgba(26, 24, 20, 0.035) 1px,
-    transparent 1px,
-    transparent 26px
-  );
-  --surface-card: #fffdf7;
-  --surface-elevated: #ffffff;
+      0deg,
+      rgba(120, 220, 230, 0.05) 0px,
+      rgba(120, 220, 230, 0.05) 1px,
+      transparent 1px,
+      transparent 26px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(120, 220, 230, 0.05) 0px,
+      rgba(120, 220, 230, 0.05) 1px,
+      transparent 1px,
+      transparent 26px
+    );
+  --surface-card: #08161c;
+  --surface-elevated: #0e2530;
 
-  --text-primary: #1a1814;
-  --text-muted: #5c574c;
-  --text-inverse: #fffdf7;
+  --text-primary: #c2ecf2;
+  --text-muted: #82c3d0;
+  --text-inverse: #02171d;
 
-  --choice-rock: #2f4b7c;
-  --choice-rock-ink: #fffdf7;
-  --choice-paper: #8a6209;
-  --choice-paper-ink: #fffdf7;
-  --choice-scissors: #a63232;
-  --choice-scissors-ink: #fffdf7;
+  --choice-rock: #5fd8e8;
+  --choice-rock-ink: #02171d;
+  --choice-paper: #9ae8e0;
+  --choice-paper-ink: #02171d;
+  --choice-scissors: #6fe0d2;
+  --choice-scissors-ink: #02171d;
 
-  --outcome-win: #1f6b3a;
-  --outcome-lose: #a63232;
-  --outcome-tie: #5c574c;
+  --outcome-win: #6bffb0;
+  --outcome-lose: #ff9a8a;
+  --outcome-tie: #82c3d0;
 
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-choice: 9999px;
-  --border-width: 2px;
-  --border-color: #1a1814;
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-choice: 0.25rem;
+  --border-width: 1px;
+  --border-color: #1d4a56;
+  --border-style: solid;
+
+  --font-display: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-body: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --display-transform: uppercase;
+  --display-tracking: 0.16em;
+
+  --shadow-card: 0 0 0 1px #1d4a56, 0 0 26px rgba(110, 220, 230, 0.16);
+  --shadow-choice: 0 0 24px rgba(110, 220, 230, 0.3);
+  --glow-choice: 0 0 18px rgba(110, 220, 230, 0.4);
+
+  --motion-ease: 0.25, 0.1, 0.25, 1;
+  --motion-scale: 0.95;
+
+  --audio-wave: sawtooth;
+  --audio-base-freq: 440;
+  --audio-detune: -8;
+}
+
+/* --------------------------------------------------------------------------
+   5. Macro Nature — set06_macro_nature
+   sampled: soil #7e6751 · moss/ochre #5b4d2b · deep shade #141413
+   -------------------------------------------------------------------------- */
+[data-theme='nature'] {
+  --surface-page: #241e17;
+  --surface-page-image: radial-gradient(ellipse at 50% 25%, rgba(180, 140, 80, 0.18), transparent 62%);
+  --surface-card: #2f281e;
+  --surface-elevated: #3c3327;
+
+  --text-primary: #f3e9d9;
+  --text-muted: #c6b494;
+  --text-inverse: #1a150e;
+
+  --choice-rock: #a3937a;
+  --choice-rock-ink: #1a150e;
+  --choice-paper: #c6ab7c;
+  --choice-paper-ink: #1a150e;
+  --choice-scissors: #d9a052;
+  --choice-scissors-ink: #1a150e;
+
+  --outcome-win: #a4d97a;
+  --outcome-lose: #f2a084;
+  --outcome-tie: #c6b494;
+
+  --radius-sm: 0.75rem;
+  --radius-md: 1.25rem;
+  --radius-choice: 1.5rem;
+  --border-width: 1px;
+  --border-color: #4d4232;
   --border-style: solid;
 
   --font-display: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
-  --font-body: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
   --display-transform: none;
-  --display-tracking: 0.01em;
+  --display-tracking: 0em;
 
-  --shadow-card: 3px 3px 0 rgba(26, 24, 20, 0.85);
-  --shadow-choice: 2px 3px 0 rgba(26, 24, 20, 0.85);
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-choice: 0 12px 26px rgba(0, 0, 0, 0.55);
   --glow-choice: none;
 
   --motion-ease: 0.37, 0, 0.63, 1;
   --motion-scale: 1.15;
 
   --audio-wave: sine;
-  --audio-base-freq: 420;
-  --audio-detune: -4;
+  --audio-base-freq: 360;
+  --audio-detune: -3;
 }
 
 /* --------------------------------------------------------------------------
-   3. Retro Pixel — 8-bit, hard edges, zero radius, stepped motion
-   Press Start 2P is the one self-hosted webfont in the project (no system
-   equivalent exists); every other theme uses a system stack.
+   6. Product Catalogue — set07_product
+   sampled: sweep #f7f8f8 · soft grey #e3e4e4 · shadow #bcbcbd
+   Cool and clinical, deliberately distinct from Studio's warmth.
+   -------------------------------------------------------------------------- */
+[data-theme='product'] {
+  --surface-page: #f3f5f6;
+  --surface-page-image: none;
+  --surface-card: #ffffff;
+  --surface-elevated: #ffffff;
+
+  --text-primary: #14181b;
+  --text-muted: #4c565d;
+  --text-inverse: #ffffff;
+
+  --choice-rock: #4a5b66;
+  --choice-rock-ink: #ffffff;
+  --choice-paper: #5a6e7a;
+  --choice-paper-ink: #ffffff;
+  --choice-scissors: #1f6b8c;
+  --choice-scissors-ink: #ffffff;
+
+  --outcome-win: #10603c;
+  --outcome-lose: #9e1f3c;
+  --outcome-tie: #4c565d;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-choice: 0.75rem;
+  --border-width: 1px;
+  --border-color: #dde2e5;
+  --border-style: solid;
+
+  --font-display: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: uppercase;
+  --display-tracking: 0.1em;
+
+  --shadow-card: 0 6px 20px rgba(20, 30, 38, 0.1);
+  --shadow-choice: 0 8px 22px rgba(20, 30, 38, 0.16);
+  --glow-choice: none;
+
+  --motion-ease: 0.3, 0.7, 0.3, 1;
+  --motion-scale: 0.9;
+
+  --audio-wave: triangle;
+  --audio-base-freq: 660;
+  --audio-detune: 0;
+}
+
+/* --------------------------------------------------------------------------
+   7. Zero Gravity — set08_zerog
+   sampled: void #1a2138 · nebula #241a3c · lit rim #323a5c
+   -------------------------------------------------------------------------- */
+[data-theme='zerog'] {
+  --surface-page: #111629;
+  --surface-page-image: radial-gradient(ellipse at 30% 20%, rgba(120, 130, 220, 0.2), transparent 55%),
+    radial-gradient(ellipse at 75% 75%, rgba(150, 100, 200, 0.16), transparent 55%);
+  --surface-card: #1a2039;
+  --surface-elevated: #262d4c;
+
+  --text-primary: #e8eaf7;
+  --text-muted: #aab0cf;
+  --text-inverse: #080b16;
+
+  --choice-rock: #7d8dd4;
+  --choice-rock-ink: #080b16;
+  --choice-paper: #9aa5e0;
+  --choice-paper-ink: #080b16;
+  --choice-scissors: #b18ad8;
+  --choice-scissors-ink: #080b16;
+
+  --outcome-win: #74e0a8;
+  --outcome-lose: #ff93a6;
+  --outcome-tie: #aab0cf;
+
+  --radius-sm: 1rem;
+  --radius-md: 1.5rem;
+  --radius-choice: 2rem;
+  --border-width: 1px;
+  --border-color: #333b60;
+  --border-style: solid;
+
+  --font-display: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: none;
+  --display-tracking: 0.02em;
+
+  --shadow-card: 0 14px 40px rgba(0, 0, 0, 0.55);
+  --shadow-choice: 0 16px 34px rgba(0, 0, 0, 0.6);
+  --glow-choice: 0 0 26px rgba(140, 150, 230, 0.32);
+
+  --motion-ease: 0.34, 1.3, 0.64, 1;
+  --motion-scale: 1.25;
+
+  --audio-wave: triangle;
+  --audio-base-freq: 480;
+  --audio-detune: 5;
+}
+
+/* --------------------------------------------------------------------------
+   8. Retro Pixel — no art set, renders the built-in SVG icons.
+   Kept because it is the one identity the photographic sets structurally
+   cannot produce, and because it keeps the SVG path — which is also the
+   image-load fallback — shipped and exercised rather than rotting.
+   Press Start 2P is the only self-hosted webfont in the project.
    -------------------------------------------------------------------------- */
 [data-theme='pixel'] {
   --surface-page: #1a1c2c;
@@ -214,122 +479,10 @@
   --shadow-choice: 5px 5px 0 #1a1c2c;
   --glow-choice: none;
 
-  /* Stepped, arcade-snappy — no smooth ease-out */
   --motion-ease: 0.6, 0, 0.9, 0.1;
   --motion-scale: 0.7;
 
   --audio-wave: square;
   --audio-base-freq: 523;
   --audio-detune: 0;
-}
-
-/* --------------------------------------------------------------------------
-   4. Candy Pop — pastel, oversized radii, puffy shadows, bouncy motion
-   -------------------------------------------------------------------------- */
-[data-theme='candy'] {
-  --surface-page: #fff0f6;
-  --surface-page-image: radial-gradient(
-      circle at 15% 20%,
-      rgba(255, 209, 232, 0.75),
-      transparent 40%
-    ),
-    radial-gradient(circle at 85% 75%, rgba(198, 236, 255, 0.75), transparent 40%);
-  --surface-card: #ffffff;
-  --surface-elevated: #fff7fb;
-
-  --text-primary: #4a2545;
-  --text-muted: #7d5578;
-  --text-inverse: #ffffff;
-
-  --choice-rock: #8ecae6;
-  --choice-rock-ink: #0d2b38;
-  --choice-paper: #ffd8a8;
-  --choice-paper-ink: #4a2c05;
-  --choice-scissors: #ffb3c8;
-  --choice-scissors-ink: #4a0f26;
-
-  --outcome-win: #14663f;
-  --outcome-lose: #a8153f;
-  --outcome-tie: #7d5578;
-
-  --radius-sm: 1rem;
-  --radius-md: 2rem;
-  --radius-choice: 9999px;
-  --border-width: 0px;
-  --border-color: transparent;
-  --border-style: solid;
-
-  --font-display: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, sans-serif;
-  --font-body: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, sans-serif;
-  --display-transform: none;
-  --display-tracking: -0.01em;
-
-  --shadow-card: 0 12px 32px rgba(224, 80, 126, 0.18);
-  --shadow-choice: 0 10px 0 rgba(0, 0, 0, 0.12);
-  --glow-choice: none;
-
-  /* Overshoot — the bounce is the whole character */
-  --motion-ease: 0.34, 1.56, 0.64, 1;
-  --motion-scale: 1.1;
-
-  --audio-wave: triangle;
-  --audio-base-freq: 587;
-  --audio-detune: 3;
-}
-
-/* --------------------------------------------------------------------------
-   5. Cyber Terminal — near-black, phosphor green, scanlines, mechanical motion
-   Contrast note: phosphor green is lightened from a "true" P1 phosphor so both
-   primary and muted text clear AA on near-black.
-   -------------------------------------------------------------------------- */
-[data-theme='cyber'] {
-  --surface-page: #05080a;
-  --surface-page-image: repeating-linear-gradient(
-    0deg,
-    rgba(0, 255, 140, 0.055) 0px,
-    rgba(0, 255, 140, 0.055) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  --surface-card: #0b1210;
-  --surface-elevated: #12201b;
-
-  --text-primary: #7dffb2;
-  --text-muted: #52c98a;
-  --text-inverse: #05080a;
-
-  --choice-rock: #35e0d0;
-  --choice-rock-ink: #05080a;
-  --choice-paper: #c8e05a;
-  --choice-paper-ink: #05080a;
-  --choice-scissors: #ff7a5c;
-  --choice-scissors-ink: #05080a;
-
-  --outcome-win: #6bff9e;
-  --outcome-lose: #ff8f7a;
-  --outcome-tie: #52c98a;
-
-  --radius-sm: 0.125rem;
-  --radius-md: 0.25rem;
-  --radius-choice: 0.25rem;
-  --border-width: 1px;
-  --border-color: #2f7a56;
-  --border-style: solid;
-
-  --font-display: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --font-body: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --display-transform: uppercase;
-  --display-tracking: 0.12em;
-
-  --shadow-card: 0 0 0 1px #2f7a56, 0 0 24px rgba(0, 255, 140, 0.12);
-  --shadow-choice: 0 0 16px rgba(0, 255, 140, 0.25);
-  --glow-choice: 0 0 12px currentColor;
-
-  /* Mechanical: near-linear, no easing flourish */
-  --motion-ease: 0.25, 0.1, 0.25, 1;
-  --motion-scale: 0.9;
-
-  --audio-wave: sawtooth;
-  --audio-base-freq: 380;
-  --audio-detune: -10;
 }

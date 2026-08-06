@@ -9,4 +9,11 @@ export default defineConfig({
   // production. Must match the deploy's remote path (CPANEL_FTP_REMOTE_PATH).
   base: '/evenshock/',
   plugins: [react(), tailwindcss()],
+  build: {
+    // Never inline theme artwork. Vite base64-inlines assets under 4KB, which
+    // would bake the picker thumbnails into the main JS bundle — making
+    // `loading="lazy"` a no-op and charging every visitor for all seven themes'
+    // previews up front. As separate files they stay cacheable and deferrable.
+    assetsInlineLimit: (filePath) => (filePath.endsWith('.webp') ? false : undefined),
+  },
 })

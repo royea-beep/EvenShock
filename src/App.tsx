@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 import { useGame } from './hooks/useGame';
 import { useTheme } from './hooks/useTheme';
+import { useThemeImages } from './hooks/useThemeImages';
 import { useMuted } from './hooks/useMuted';
 import { getScreen } from './utils/getScreen';
 import { unlockAudio } from './utils/sound';
@@ -15,6 +16,7 @@ function App() {
   const screen = getScreen(game);
   const { muted, toggleMuted } = useMuted();
   const { theme, setTheme } = useTheme();
+  const imageSet = useThemeImages(theme);
   const reducedMotion = useReducedMotion();
 
   const shakeControls = useAnimationControls();
@@ -66,6 +68,7 @@ function App() {
                 score={game.score}
                 matchStatus={game.matchStatus}
                 roundNumber={game.roundNumber}
+                imageSet={imageSet}
                 onPick={game.pickChoice}
                 onContinue={game.continueFromResult}
               />

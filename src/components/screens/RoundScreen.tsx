@@ -6,6 +6,7 @@ import { SHAKE_BEATS, SHAKE_BEAT_MS } from '../../constants/gameConfig';
 import { ChoiceButton } from '../ChoiceButton';
 import { HandsFaceOff } from '../HandsFaceOff';
 import { play } from '../../utils/sound';
+import type { ImageSet } from '../../assets/themes';
 
 const CHOICES: Choice[] = ['rock', 'paper', 'scissors'];
 
@@ -45,6 +46,7 @@ interface RoundScreenProps {
   score: Score;
   matchStatus: MatchStatus;
   roundNumber: number;
+  imageSet: ImageSet | null;
   onPick: (choice: Choice) => void;
   onContinue: () => void;
 }
@@ -56,6 +58,7 @@ export function RoundScreen({
   score,
   matchStatus,
   roundNumber,
+  imageSet,
   onPick,
   onContinue,
 }: RoundScreenProps) {
@@ -100,10 +103,13 @@ export function RoundScreen({
         className="flex flex-col items-center gap-8 text-center"
       >
         <p className="display-type text-lg font-semibold text-muted">{copy.game.prompt}</p>
-        <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10">
+        {/* gap-3 on mobile is load-bearing: three 112px buttons plus gap-6 came
+            to 384px against 382px of usable width on a 430px phone, wrapping
+            scissors onto its own row. The moves must read as one row. */}
+        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-10">
           {CHOICES.map((choice) => (
             <div key={choice} className="flex flex-col items-center gap-3">
-              <ChoiceButton choice={choice} onSelect={onPick} />
+              <ChoiceButton choice={choice} imageSet={imageSet} onSelect={onPick} />
               <span className="display-type text-sm font-semibold text-muted">
                 {copy.choices[choice]}
               </span>
@@ -137,6 +143,7 @@ export function RoundScreen({
           phase={phase}
           roundResult={roundResult}
           roundKey={roundNumber}
+          imageSet={imageSet}
         />
       </div>
 

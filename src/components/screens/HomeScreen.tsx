@@ -29,18 +29,29 @@ export function HomeScreen({
       className="flex flex-col items-center gap-8 text-center"
     >
       <div className="space-y-3">
-        <h1 className="display-type text-5xl font-extrabold text-ink sm:text-6xl">
+        {/* "EvenShock" is a single unbreakable word, so a fixed type size
+            overflows narrow screens in the wide letter-spaced display faces
+            (Marble, Chrome, X-Ray, Product) — measured spilling ~60px past a
+            320px viewport at text-5xl. Scaling with the viewport up to the old
+            size keeps every theme inside the page. */}
+        <h1 className="display-type text-[clamp(1.9rem,9vw,3rem)] font-extrabold text-ink sm:text-6xl">
           {copy.home.title}
         </h1>
         <p className="text-lg text-muted">{copy.home.subtitle}</p>
       </div>
 
-      <div className="space-y-3">
+      <div className="w-full space-y-3">
         <p className="display-type text-sm font-semibold text-muted">
           {copy.home.formatLabel}
         </p>
+        {/* A 3-column grid rather than flex-wrap. Label width varies wildly
+            between themes — the letter-spaced uppercase faces make "Single
+            Round" roughly twice the width it is in Studio — so a wrapping flex
+            row broke into a ragged 2+1 on narrow screens in some themes and not
+            others. Equal thirds keep the three formats on one row in every
+            theme; a long label wraps inside its own pill instead. */}
         <div
-          className="flex flex-wrap justify-center gap-2"
+          className="grid grid-cols-3 items-stretch gap-1.5 sm:gap-2"
           role="radiogroup"
           aria-label={copy.home.formatLabel}
         >
@@ -57,7 +68,11 @@ export function HomeScreen({
                 borderColor: 'var(--border-color)',
                 borderStyle: 'var(--border-style)',
               }}
-              className={`display-type cursor-pointer px-5 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current ${
+              // Tighter type and padding on mobile so all three formats stay on
+              // one row. The widest themes (Chrome, X-Ray, Product) set a
+              // letter-spaced uppercase display face, which pushes "Single
+              // Round" wide enough to wrap the group at text-sm/px-5.
+              className={`display-type cursor-pointer px-2.5 py-2.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current sm:px-5 sm:text-sm ${
                 format === f
                   ? 'bg-scissors text-scissors-ink'
                   : 'bg-elevated text-ink hover:opacity-80'

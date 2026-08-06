@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion';
 import type { Choice } from '../types/game';
-import { CHOICE_ICONS } from './icons';
-import { copy } from '../constants/copy';
+import type { ImageSet } from '../assets/themes';
 import { play } from '../utils/sound';
+import { MoveArt } from './MoveArt';
 
-/** Fill + icon color both come from theme tokens, so each theme picks its own trio. */
+/** Backs the artwork, and shows through when a theme has no art set. */
 const VARIANT_CLASSES: Record<Choice, string> = {
   rock: 'bg-rock text-rock-ink',
   paper: 'bg-paper text-paper-ink',
@@ -13,23 +13,32 @@ const VARIANT_CLASSES: Record<Choice, string> = {
 
 interface ChoiceButtonProps {
   choice: Choice;
+  imageSet: ImageSet | null;
   onSelect?: (choice: Choice) => void;
   disabled?: boolean;
-  /** Non-interactive rendering for the theme picker previews. */
+  /** Non-interactive rendering for the theme-picker previews. */
   preview?: boolean;
 }
 
-export function ChoiceButton({ choice, onSelect, disabled, preview }: ChoiceButtonProps) {
-  const Icon = CHOICE_ICONS[choice];
-
+export function ChoiceButton({
+  choice,
+  imageSet,
+  onSelect,
+  disabled,
+  preview,
+}: ChoiceButtonProps) {
   const handleClick = () => {
     if (disabled || preview) return;
     play('select');
     onSelect?.(choice);
   };
 
-  const size = preview ? 'h-10 w-10' : 'h-28 w-28 sm:h-36 sm:w-36';
-  const iconSize = preview ? 'h-5 w-5' : 'h-14 w-14 sm:h-18 sm:w-18';
+  // Below `sm` the three moves must fit one row on the narrowest phones we care
+  // about (320px). A fixed 112px square overflowed at 360px and wrapped
+  // scissors onto its own line, so the play size is viewport-relative until the
+  // breakpoint, where it locks to a fixed 144px.
+  const size = preview ? 'h-11 w-11' : 'h-[24vw] w-[24vw] sm:h-36 sm:w-36';
+  const iconSize = preview ? 'h-5 w-5' : 'h-[12vw] w-[12vw] sm:h-18 sm:w-18';
 
   return (
     <motion.button
@@ -38,7 +47,7 @@ export function ChoiceButton({ choice, onSelect, disabled, preview }: ChoiceButt
       tabIndex={preview ? -1 : undefined}
       aria-hidden={preview || undefined}
       onClick={handleClick}
-      aria-label={preview ? undefined : copy.choices[choice]}
+      // Transform-only hover/tap so the compositor handles it, not layout.
       whileHover={disabled || preview ? undefined : { scale: 1.08 }}
       whileTap={disabled || preview ? undefined : { scale: 0.94 }}
       transition={{ type: 'spring', stiffness: 400, damping: 18 }}
@@ -49,11 +58,18 @@ export function ChoiceButton({ choice, onSelect, disabled, preview }: ChoiceButt
         borderColor: 'var(--border-color)',
         borderStyle: 'var(--border-style)',
       }}
-      className={`flex ${size} shrink-0 items-center justify-center transition-opacity ${
+      className={`flex ${size} shrink-0 items-center justify-center overflow-hidden transition-opacity ${
         VARIANT_CLASSES[choice]
       } ${disabled && !preview ? 'opacity-40' : ''} ${preview ? '' : 'cursor-pointer'}`}
     >
-      <Icon className={iconSize} />
+      <MoveArt
+        choice={choice}
+        imageSet={imageSet}
+        size={preview ? 'thumb' : 'full'}
+        decorative={preview}
+        lazy={preview}
+        iconClassName={iconSize}
+      />
     </motion.button>
   );
 }

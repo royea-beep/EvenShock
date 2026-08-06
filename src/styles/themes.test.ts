@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -76,6 +76,39 @@ function themeBlock(id: string): string {
   }
   return '';
 }
+
+const ASSET_ROOT = resolve(here, '../assets/themes');
+const MOVES = ['rock', 'paper', 'scissors'] as const;
+
+describe('theme art sets', () => {
+  const withArt = THEMES.filter((t) => t.imageSlug);
+
+  it('has at least one theme with no art set, keeping the SVG fallback path shipped', () => {
+    expect(THEMES.some((t) => t.imageSlug === null)).toBe(true);
+  });
+
+  it.each(withArt.map((t) => [t.id, t.imageSlug] as const))(
+    'theme "%s" has all three moves at both sizes in %s',
+    (_id, slug) => {
+      const missing: string[] = [];
+      for (const move of MOVES) {
+        for (const file of [`${move}.webp`, `${move}-thumb.webp`]) {
+          const path = resolve(ASSET_ROOT, slug!, file);
+          if (!existsSync(path) || statSync(path).size === 0) missing.push(`${slug}/${file}`);
+        }
+      }
+      expect(missing, `missing or empty: ${missing.join(', ')}`).toEqual([]);
+    },
+  );
+
+  it('ships no art folder that no theme references', () => {
+    const referenced = new Set(withArt.map((t) => t.imageSlug));
+    const onDisk = existsSync(ASSET_ROOT)
+      ? readdirSync(ASSET_ROOT).filter((d) => statSync(resolve(ASSET_ROOT, d)).isDirectory())
+      : [];
+    expect(onDisk.filter((d) => !referenced.has(d))).toEqual([]);
+  });
+});
 
 describe('theme token parity', () => {
   it('defines a CSS block for every theme in the THEMES array', () => {
