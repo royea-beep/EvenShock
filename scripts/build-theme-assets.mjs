@@ -26,11 +26,26 @@ const FULL_PX = 640;
 const THUMB_PX = 160;
 const DEFAULT_QUALITY = 78;
 
-/** Sets whose look depends on smooth gradient or specular detail. */
+/**
+ * Sets whose look depends on smooth gradient or specular detail.
+ *
+ * Each number was set by cropping to the region where the q78 error concentrates and comparing
+ * against the source at render size, not by a metric alone — a whole-image score cannot tell
+ * posterised glow apart from honestly-expensive grain, and rates ink paper worse than x-ray glow.
+ * Sets absent from this map were checked and showed no visible loss at the default.
+ */
 const QUALITY = {
   set05_xray: 90, // cyan glow falloff bands at low q
   set04_chrome: 86, // specular highlights posterise at low q
   set08_zerog: 84, // starfield + soft vignette
+  set11_neon_night: 90, // magenta/cyan rim glow falls off into black — x-ray's failure mode
+  set14_mecha: 90, // large flat dark panel; q78 breaks it into visible quantisation blocks
+  set15_gold: 86, // fine specular sparkle over gold flattens into patches at q78
+  set16_powder: 86, // airborne particles are the whole look and thin out at q78
+  set18_glass: 86, // smooth teal gradient behind refractive speculars
+  set13_frost: 84, // ice refraction is mid-frequency; mild softening only
+  // set12_molten and set17_ink are deliberately absent: molten scored the cleanest of all 15 sets
+  // and ink is paper texture, which is indistinguishable from source at every quality tested.
 };
 
 const MOVES = ['rock', 'paper', 'scissors'];
