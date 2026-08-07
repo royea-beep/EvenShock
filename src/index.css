@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@import '@fontsource/press-start-2p/latin-400.css';
 @import './styles/themes.css';
 
 /*
@@ -65,25 +64,6 @@ body {
   font-family: var(--font-display);
   text-transform: var(--display-transform);
   letter-spacing: var(--display-tracking);
-}
-
-/* Press Start 2P draws much larger than other faces at the same point size.
-   Scale the rem BASE rather than overriding .display-type's font-size: an
-   override there beats Tailwind's text-* utilities at equal specificity and
-   flattens the whole type scale (title ends up smaller than body copy).
-   Scaling the root keeps every size and spacing step proportional. */
-html[data-theme='pixel'] {
-  font-size: 68.75%;
-}
-
-[data-theme='pixel'] .display-type {
-  line-height: 1.7;
-}
-
-/* The picker previews scope a theme to a <div>, so the html-level rule above
-   doesn't reach them — keep their pixel label legible on its own terms. */
-[data-theme='pixel'] .theme-preview-label {
-  font-size: 0.55rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

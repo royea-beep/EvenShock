@@ -95,8 +95,24 @@ describe('theme picker grid', () => {
 describe('theme art sets', () => {
   const withArt = THEMES.filter((t) => t.imageSlug);
 
-  it('has at least one theme with no art set, keeping the SVG fallback path shipped', () => {
-    expect(THEMES.some((t) => t.imageSlug === null)).toBe(true);
+  it('ships every theme with a complete art set', () => {
+    // Retro Pixel used to sit here as the SVG-only theme, on the argument that
+    // an untested fallback is a broken fallback. The argument was right; the
+    // remedy was not. It only ever exercised the "theme has no art" branch,
+    // never the "image failed to load" branch that actually fires in
+    // production — so it bought coverage of the lesser path while implying
+    // coverage of the greater one. Both branches are now covered directly, in
+    // MoveArt's own tests and by the blocked-image run in the browser suite.
+    expect(THEMES.filter((t) => t.imageSlug === null)).toEqual([]);
+  });
+
+  it('has no art set that is not a pair of hands', () => {
+    // Object sets (macro nature, product catalogue, zero gravity) were cut.
+    // The slug numbering is deliberately non-contiguous; this guards the
+    // three that were removed from being re-added by a stale merge.
+    const retired = ['set06_macro_nature', 'set07_product', 'set08_zerog'];
+    const shipped = THEMES.map((t) => t.imageSlug);
+    expect(shipped.filter((s) => retired.includes(s!))).toEqual([]);
   });
 
   it.each(withArt.map((t) => [t.id, t.imageSlug] as const))(

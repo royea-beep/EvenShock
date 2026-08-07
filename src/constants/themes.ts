@@ -5,9 +5,15 @@
  *   3. add an entry here
  * Nothing else in the app changes. Removing one is the same three deletions.
  *
- * `imageSlug` points at the art set. A theme with `null` renders the built-in
- * SVG icons instead — which is also the fallback path when an image fails to
- * load, so keeping at least one such theme shipped keeps that path exercised.
+ * Keep the count a MULTIPLE OF FOUR. The picker lays out 2 columns on mobile
+ * and 4 from `sm` up; anything else leaves a short row centred under a full
+ * one, which reads as a bug. `themes.test.ts` asserts it.
+ *
+ * `imageSlug` may be null for a theme with no art set, which renders the
+ * built-in SVG icons. No theme ships that way today: the SVG path is the
+ * image-load FALLBACK, and it is covered by tests — including the "image
+ * failed to load" branch that a shipped SVG theme never exercised — rather
+ * than by spending a picker slot on it.
  */
 export const THEMES = [
   {
@@ -35,28 +41,52 @@ export const THEMES = [
     imageSlug: 'set05_xray',
   },
   {
-    id: 'nature',
-    name: 'Macro Nature',
-    blurb: 'Real stone, paper and steel in the wild',
-    imageSlug: 'set06_macro_nature',
+    id: 'neon',
+    name: 'Neon Night',
+    blurb: 'Rim-lit in magenta and cyan',
+    imageSlug: 'set11_neon_night',
   },
   {
-    id: 'product',
-    name: 'Product Catalogue',
-    blurb: 'Clean studio objects, cool and clinical',
-    imageSlug: 'set07_product',
+    id: 'molten',
+    name: 'Molten Lava',
+    blurb: 'Cracked crust over glowing heat',
+    imageSlug: 'set12_molten',
   },
   {
-    id: 'zerog',
-    name: 'Zero Gravity',
-    blurb: 'Floating in deep space',
-    imageSlug: 'set08_zerog',
+    id: 'frost',
+    name: 'Frozen Ice',
+    blurb: 'Carved from ice, lit blue',
+    imageSlug: 'set13_frost',
   },
   {
-    id: 'pixel',
-    name: 'Retro Pixel',
-    blurb: '8-bit icons, hard edges, no curves',
-    imageSlug: null,
+    id: 'mecha',
+    name: 'Mecha Robotic',
+    blurb: 'Armoured plate and cyan trim',
+    imageSlug: 'set14_mecha',
+  },
+  {
+    id: 'gold',
+    name: 'Solid Gold',
+    blurb: 'Cast in polished gold',
+    imageSlug: 'set15_gold',
+  },
+  {
+    id: 'powder',
+    name: 'Powder Burst',
+    blurb: 'Caught in a cloud of colour',
+    imageSlug: 'set16_powder',
+  },
+  {
+    id: 'ink',
+    name: 'Ink Brush',
+    blurb: 'Brushed in ink on warm paper',
+    imageSlug: 'set17_ink',
+  },
+  {
+    id: 'glass',
+    name: 'Clear Glass',
+    blurb: 'Moulded glass, refracting teal',
+    imageSlug: 'set18_glass',
   },
 ] as const;
 

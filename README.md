@@ -24,9 +24,9 @@ npm run lint     # oxlint
 ```
 src/
   components/
-    icons/             Custom flat-fill SVG icons — fallback when a theme has no art
+    icons/             Custom flat-fill SVG icons — the image-load fallback
     screens/           Home, Round (picking → revealing → result), MatchEnd
-    ChoiceButton.tsx   The choice button used during picking and in theme previews
+    ChoiceButton.tsx   The choice button used during picking
     MoveArt.tsx        Renders a move: themed image, or the SVG icon as fallback
     HandsFaceOff.tsx   The two hands: shake in unison, then snap to the reveal
     ThemePicker.tsx    Radiogroup of live, individually themed previews
@@ -80,34 +80,48 @@ The reset is exact rather than heuristic. `roundNumber === 1` with no pick and n
 
 ## Themes
 
-Eight visual identities, picked on the Home screen before a match. Each is a complete identity: artwork, colors, page background, fonts, corner radii, shadow/glow, motion easing, and SFX character.
+Twelve visual identities, picked on the Home screen before a match. Each is a complete identity: artwork, colors, page background, fonts, corner radii, shadow/glow, motion easing, and SFX character.
 
-| Theme | `id` | Artwork |
-| --- | --- | --- |
-| Studio | `studio` | `set01_studio_hands` |
-| Classical Marble | `marble` | `set03_marble` |
-| Liquid Chrome | `chrome` | `set04_chrome` |
-| X-Ray | `xray` | `set05_xray` |
-| Macro Nature | `nature` | `set06_macro_nature` |
-| Product Catalogue | `product` | `set07_product` |
-| Zero Gravity | `zerog` | `set08_zerog` |
-| Retro Pixel | `pixel` | — (SVG icons) |
+| Theme | `id` | Artwork | Set |
+| --- | --- | --- | --- |
+| Studio | `studio` | `set01_studio_hands` | 28.7 KB |
+| Classical Marble | `marble` | `set03_marble` | 29.8 KB |
+| Liquid Chrome | `chrome` | `set04_chrome` | 51.5 KB |
+| X-Ray | `xray` | `set05_xray` | 79.5 KB |
+| Neon Night | `neon` | `set11_neon_night` | 71.5 KB |
+| Molten Lava | `molten` | `set12_molten` | 78.2 KB |
+| Frozen Ice | `frost` | `set13_frost` | 129.2 KB |
+| Mecha Robotic | `mecha` | `set14_mecha` | 93.2 KB |
+| Solid Gold | `gold` | `set15_gold` | 108.3 KB |
+| Powder Burst | `powder` | `set16_powder` | 208.1 KB |
+| Ink Brush | `ink` | `set17_ink` | 112.5 KB |
+| Clear Glass | `glass` | `set18_glass` | 106.9 KB |
 
-The mechanism is `data-theme` + CSS custom properties. `useTheme()` writes one attribute onto `<html>`; the tokens cascade from there, so switching is instant, costs no React re-render, and can be scoped to any subtree — which is how the picker renders live previews of all eight themes on one page.
+Every set is a pair of **hands**. The object sets (macro nature, product catalogue, zero gravity) and the SVG-only Retro Pixel were cut.
 
-Retro Pixel deliberately ships **without** an art set. It's the one identity no photoreal render can produce, and it keeps the SVG icon path — which is also the image-load fallback — a real, exercised code path. An untested fallback is a broken fallback, so `themes.test.ts` asserts at least one theme stays art-free.
+Keep the count a **multiple of four** — the picker is 2 columns on mobile and 4 from `sm` up, and anything else leaves a short row centred under a full one. `themes.test.ts` asserts it.
+
+The mechanism is `data-theme` + CSS custom properties. `useTheme()` writes one attribute onto `<html>`; the tokens cascade from there, so switching is instant, costs no React re-render, and can be scoped to any subtree — which is how the picker renders live previews of all twelve themes on one page.
+
+### The SVG fallback
+
+No theme ships without art any more. Retro Pixel used to, on the argument that an untested fallback is a broken fallback — the argument was right, the remedy was not.
+
+`MoveArt` has two fallback branches: `imageSet === null` (theme has no art) and `onError` (the image failed to load). Shipping an SVG-only theme exercised the first and **never** the second — which is the one that actually fires in production, on a flaky network or a blocked request. It bought coverage of the lesser path while implying coverage of the greater one.
+
+Both are covered directly now: `MoveArt.test.ts` pins the resolution and the handler wiring, and the browser suite aborts every `.webp` request and asserts all twelve picker tiles fall back to SVG, the move buttons keep their accessible names, and a round still plays to an outcome.
 
 ### Where the images live
 
 ```
 src/assets/themes/<slug>/
   rock.webp          640px, shown at play size
-  rock-thumb.webp    160px, shown in the theme picker (lazy-loaded)
+  rock-thumb.webp    320px, shown in the theme picker (lazy-loaded)
   paper.webp   paper-thumb.webp
   scissors.webp  scissors-thumb.webp
 ```
 
-42 files, **314 KB total** for all seven art sets. They're picked up by an `import.meta.glob` registry in `src/assets/themes/index.ts`, which only exposes a set once all six of its files are present — a half-populated folder is treated as absent, and that theme falls back to SVG rather than rendering a hole.
+72 files, **1.07 MB total** for all twelve art sets. Only the selected theme's full-size art is fetched; Home costs the twelve rock thumbnails, **92 KB**. Those tiles render at 188px, so pulling full-size art for them instead would cost 351 KB for no visible gain. They're picked up by an `import.meta.glob` registry in `src/assets/themes/index.ts`, which only exposes a set once all six of its files are present — a half-populated folder is treated as absent, and that theme falls back to SVG rather than rendering a hole.
 
 Two details that are easy to undo by accident:
 
@@ -131,7 +145,7 @@ Two things worth knowing when authoring:
 
 ### Accessibility across themes
 
-Every theme clears **WCAG AA (4.5:1)** for primary text, muted text, outcome colors, and choice-icon-on-fill — verified by measuring computed colors in a browser, not by eye. The current floor across all eight themes is 5.3:1. Outcomes carry a shape marker (▲ win / ▼ lose / ＝ tie) alongside the color and the wording, so they stay distinguishable without color perception. `prefers-reduced-motion` is respected in all eight, including the ones whose character is motion.
+Every theme clears **WCAG AA (4.5:1)** for primary text, muted text, outcome colors, and choice-icon-on-fill — verified by measuring computed colors in a browser, not by eye. The current floor across all twelve themes is 5.26:1. Outcomes carry a shape marker (▲ win / ▼ lose / ＝ tie) alongside the color and the wording, so they stay distinguishable without color perception. `prefers-reduced-motion` is respected in all twelve, including the ones whose character is motion.
 
 Artwork carries the move name as `alt` text; when a theme has no art set, the accessible name moves to a visually-hidden span beside the `aria-hidden` SVG, so the name survives the fallback without being announced twice.
 

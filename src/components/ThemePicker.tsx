@@ -106,7 +106,11 @@ export function ThemePicker({ theme, onChange }: ThemePickerProps) {
                 <MoveArt
                   choice={REPRESENTATIVE_MOVE}
                   imageSet={imageSet}
-                  size="full"
+                  // Thumbnails, not full-size art. The tiles render at 188px,
+                  // and pulling twelve 640px images for them cost 351KB on
+                  // Home against 92KB this way. Thumbs are 320px, so they are
+                  // still oversampled for the tile on a 1x screen.
+                  size="thumb"
                   decorative
                   // Only the active theme's art is already in memory; the rest
                   // are deferred so opening Home doesn't pull eight images.

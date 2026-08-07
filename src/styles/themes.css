@@ -6,13 +6,20 @@
    undefined variable and breaks silently — `themes.test.ts` asserts parity so
    that can't ship.
 
-   Seven themes are built around a generated art set (see src/assets/themes/);
-   their palettes are SAMPLED FROM THE ACTUAL IMAGERY — the background, the
-   subject and the highlight colours are lifted off the pixels rather than
-   invented, which is what makes the frame and the photograph read as one
-   object. Recorded per theme below as "sampled:".
+   All twelve themes are built around a generated art set (see
+   src/assets/themes/); their palettes are SAMPLED FROM THE ACTUAL IMAGERY —
+   the background, the subject and the highlight colours are lifted off the
+   pixels rather than invented, which is what makes the frame and the
+   photograph read as one object. Recorded per theme below as "sampled:".
 
-   `pixel` carries no art set and renders the built-in SVG icons instead.
+   Every set is a pair of HANDS. The object sets (macro nature, product
+   catalogue, zero gravity) were cut, along with the SVG-only Retro Pixel.
+   The SVG icons remain as the image-load FALLBACK and are covered by tests
+   rather than by a shipped theme — see src/components/MoveArt.test.ts and the
+   blocked-image check in the verification suite. That is stricter than the
+   old arrangement, which only ever exercised the "theme has no art" branch
+   and never the "image failed to load" branch that actually fires in
+   production.
 
    Selectors are plain attribute selectors (not `html[data-theme]`) on purpose:
    that lets a theme be scoped to any subtree, which is how the Home screen
@@ -29,9 +36,9 @@
      --text-primary        Body and headings. Must hit WCAG AA on --surface-page
      --text-muted          Secondary/labels. Must hit AA (4.5:1) on --surface-page
                            and --surface-card ONLY. It is NOT guaranteed on
-                           --surface-elevated: Retro Pixel's elevated blue is a
-                           bright palette colour and measures 3.3:1 there. Use
-                           --text-primary for copy on elevated fills.
+                           --surface-elevated, where a theme is free to use a
+                           bright palette colour. Use --text-primary for copy
+                           on elevated fills.
      --text-inverse        Text sitting ON a choice colour or elevated fill
    Choices — each theme picks its own trio.
      Since the choice buttons now render ARTWORK, these no longer tint the
@@ -43,8 +50,8 @@
      --outcome-win / --outcome-lose / --outcome-tie
                            Toned against --surface-page, and guaranteed AA
                            THERE ONLY. On --surface-elevated they fall as low
-                           as 3.3:1 (Retro Pixel) and 3.8:1 (Marble), so put
-                           outcome-coloured text on the page surface.
+                           as 3.8:1 (Marble), so put outcome-coloured text on
+                           the page surface.
    Shape
      --radius-sm / --radius-md   Panel + control corner radii
      --radius-choice             Choice-button radius. Photographic sets use a
@@ -282,215 +289,423 @@
 }
 
 /* --------------------------------------------------------------------------
-   5. Macro Nature — set06_macro_nature
-   sampled: soil #7e6751 · moss/ochre #5b4d2b · deep shade #141413
+   5. Neon Night — set11_neon_night
+   sampled: ground #120f11 · rim magenta #c5347f · emissive #c33277
+   Page pushed violet rather than neutral black so it separates from Chrome,
+   Molten and Solid Gold, which are all near-black in the source art.
    -------------------------------------------------------------------------- */
-[data-theme='nature'] {
-  --surface-page: #241e17;
-  --surface-page-image: radial-gradient(ellipse at 50% 25%, rgba(180, 140, 80, 0.18), transparent 62%);
-  --surface-card: #2f281e;
-  --surface-elevated: #3c3327;
+[data-theme='neon'] {
+  --surface-page: #130a18;
+  --surface-page-image: radial-gradient(ellipse at 50% 30%, rgba(197, 52, 127, 0.16), transparent 60%);
+  --surface-card: #1d1024;
+  --surface-elevated: #2a1833;
 
-  --text-primary: #f3e9d9;
-  --text-muted: #c6b494;
-  --text-inverse: #1a150e;
+  --text-primary: #f7e2ef;
+  --text-muted: #d09cc0;
+  --text-inverse: #14060f;
 
-  --choice-rock: #a3937a;
-  --choice-rock-ink: #1a150e;
-  --choice-paper: #c6ab7c;
-  --choice-paper-ink: #1a150e;
-  --choice-scissors: #d9a052;
-  --choice-scissors-ink: #1a150e;
+  --choice-rock: #e0509b;
+  --choice-rock-ink: #14060f;
+  --choice-paper: #b98ef0;
+  --choice-paper-ink: #14060f;
+  --choice-scissors: #57d8e6;
+  --choice-scissors-ink: #06171a;
 
-  --outcome-win: #a4d97a;
-  --outcome-lose: #f2a084;
-  --outcome-tie: #c6b494;
+  --outcome-win: #6ff0c0;
+  --outcome-lose: #ff92a8;
+  --outcome-tie: #d09cc0;
 
-  --radius-sm: 0.75rem;
-  --radius-md: 1.25rem;
-  --radius-choice: 1.5rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.75rem;
+  --radius-choice: 1rem;
   --border-width: 1px;
-  --border-color: #4d4232;
+  --border-color: #45244f;
   --border-style: solid;
 
-  --font-display: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
-  --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --display-transform: none;
-  --display-tracking: 0em;
+  --font-display: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: uppercase;
+  --display-tracking: 0.1em;
 
-  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.5);
-  --shadow-choice: 0 12px 26px rgba(0, 0, 0, 0.55);
-  --glow-choice: none;
+  --shadow-card: 0 0 0 1px #45244f, 0 0 30px rgba(197, 52, 127, 0.22);
+  --shadow-choice: 0 0 26px rgba(197, 52, 127, 0.34);
+  --glow-choice: 0 0 20px rgba(87, 216, 230, 0.26);
 
-  --motion-ease: 0.37, 0, 0.63, 1;
-  --motion-scale: 1.15;
+  --motion-ease: 0.16, 0.84, 0.44, 1;
+  --motion-scale: 0.92;
 
-  --audio-wave: sine;
-  --audio-base-freq: 360;
-  --audio-detune: -3;
+  --audio-wave: square;
+  --audio-base-freq: 460;
+  --audio-detune: 6;
 }
 
 /* --------------------------------------------------------------------------
-   6. Product Catalogue — set07_product
-   sampled: sweep #f7f8f8 · soft grey #e3e4e4 · shadow #bcbcbd
-   Cool and clinical, deliberately distinct from Studio's warmth.
+   6. Molten Lava — set12_molten
+   sampled: ground #020202 · ember #54342f · emissive #c36328
+   The set scored cleanest of all fifteen at default WebP quality; the look is
+   glow over true black rather than fine texture.
    -------------------------------------------------------------------------- */
-[data-theme='product'] {
-  --surface-page: #f3f5f6;
-  --surface-page-image: none;
-  --surface-card: #ffffff;
-  --surface-elevated: #ffffff;
+[data-theme='molten'] {
+  --surface-page: #150806;
+  --surface-page-image: radial-gradient(ellipse at 50% 78%, rgba(195, 99, 40, 0.2), transparent 58%);
+  --surface-card: #21100b;
+  --surface-elevated: #301810;
 
-  --text-primary: #14181b;
-  --text-muted: #4c565d;
-  --text-inverse: #ffffff;
+  --text-primary: #ffe5d0;
+  --text-muted: #d8a37e;
+  --text-inverse: #1a0803;
 
-  --choice-rock: #4a5b66;
-  --choice-rock-ink: #ffffff;
-  --choice-paper: #5a6e7a;
-  --choice-paper-ink: #ffffff;
-  --choice-scissors: #1f6b8c;
-  --choice-scissors-ink: #ffffff;
+  --choice-rock: #e8763a;
+  --choice-rock-ink: #1a0803;
+  --choice-paper: #f0a860;
+  --choice-paper-ink: #1a0803;
+  --choice-scissors: #d9524a;
+  --choice-scissors-ink: #1a0803;
 
-  --outcome-win: #10603c;
-  --outcome-lose: #9e1f3c;
-  --outcome-tie: #4c565d;
+  --outcome-win: #ffc65c;
+  --outcome-lose: #ff8f7a;
+  --outcome-tie: #d8a37e;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.625rem;
+  --radius-choice: 0.875rem;
+  --border-width: 1px;
+  --border-color: #5a2a17;
+  --border-style: solid;
+
+  --font-display: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: uppercase;
+  --display-tracking: 0.06em;
+
+  --shadow-card: 0 0 0 1px #5a2a17, 0 0 28px rgba(195, 99, 40, 0.24);
+  --shadow-choice: 0 0 26px rgba(232, 118, 58, 0.36);
+  --glow-choice: 0 0 22px rgba(255, 150, 60, 0.32);
+
+  --motion-ease: 0.3, 0.05, 0.3, 1;
+  --motion-scale: 1.06;
+
+  --audio-wave: sawtooth;
+  --audio-base-freq: 300;
+  --audio-detune: -14;
+}
+
+/* --------------------------------------------------------------------------
+   7. Frozen Ice — set13_frost
+   sampled: ground #021021 · ice #28719b · emissive #1576a9
+   Deliberately navy-blue, not cyan: X-Ray and Clear Glass already occupy the
+   teal end and the three would otherwise read as one theme in the picker.
+   -------------------------------------------------------------------------- */
+[data-theme='frost'] {
+  --surface-page: #071729;
+  --surface-page-image: linear-gradient(170deg, rgba(90, 160, 210, 0.14), transparent 55%);
+  --surface-card: #0e2338;
+  --surface-elevated: #163149;
+
+  --text-primary: #e2f1fb;
+  --text-muted: #9fc4de;
+  --text-inverse: #04121f;
+
+  --choice-rock: #6fb6e0;
+  --choice-rock-ink: #04121f;
+  --choice-paper: #a7d8f0;
+  --choice-paper-ink: #04121f;
+  --choice-scissors: #7fd0e8;
+  --choice-scissors-ink: #04121f;
+
+  --outcome-win: #7ce8c4;
+  --outcome-lose: #ff9fae;
+  --outcome-tie: #9fc4de;
+
+  --radius-sm: 0.125rem;
+  --radius-md: 0.5rem;
+  --radius-choice: 0.75rem;
+  --border-width: 1px;
+  --border-color: #2a4d6b;
+  --border-style: solid;
+
+  --font-display: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: none;
+  --display-tracking: 0.02em;
+
+  --shadow-card: 0 0 0 1px #2a4d6b, 0 0 26px rgba(110, 180, 225, 0.18);
+  --shadow-choice: 0 0 24px rgba(120, 190, 230, 0.3);
+  --glow-choice: 0 0 18px rgba(160, 215, 240, 0.28);
+
+  --motion-ease: 0.22, 0.68, 0.32, 1;
+  --motion-scale: 1.1;
+
+  --audio-wave: sine;
+  --audio-base-freq: 620;
+  --audio-detune: 4;
+}
+
+/* --------------------------------------------------------------------------
+   8. Mecha Robotic — set14_mecha
+   sampled: ground #353738 · plate #bcc0be · cyan trim floor #6b969b
+   The sampled cyan is under 0.4% of frame and reads desaturated; it is treated
+   as a floor and saturated up, per the sampler's own caveat. The page is held
+   at gunmetal so it does not collapse into Chrome's near-black.
+   -------------------------------------------------------------------------- */
+[data-theme='mecha'] {
+  --surface-page: #23292c;
+  --surface-page-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0px,
+    rgba(255, 255, 255, 0.03) 2px,
+    transparent 2px,
+    transparent 12px
+  );
+  --surface-card: #2d3336;
+  --surface-elevated: #3a4145;
+
+  --text-primary: #eef1f2;
+  --text-muted: #b6c0c4;
+  --text-inverse: #14181a;
+
+  --choice-rock: #b9c4c8;
+  --choice-rock-ink: #14181a;
+  --choice-paper: #dde3e4;
+  --choice-paper-ink: #14181a;
+  /* Hazard amber, not steel. This token drives the primary CTA, and a steel
+     one measured only dE 11.6 from Liquid Chrome's — two metal themes with
+     interchangeable buttons. Amber sits dE 38 from the nearest other theme
+     and dE 86 from this theme's own win green, so it cannot read as an
+     outcome either. */
+  --choice-scissors: #ffb703;
+  --choice-scissors-ink: #14181a;
+
+  --outcome-win: #86e5b8;
+  --outcome-lose: #ffa3a3;
+  --outcome-tie: #b6c0c4;
+
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-choice: 0.375rem;
+  --border-width: 2px;
+  --border-color: #5c6367;
+  --border-style: solid;
+
+  --font-display: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: uppercase;
+  --display-tracking: 0.14em;
+
+  --shadow-card: 0 0 0 2px #5c6367, 0 6px 18px rgba(0, 0, 0, 0.45);
+  --shadow-choice: 0 6px 16px rgba(0, 0, 0, 0.5);
+  --glow-choice: 0 0 16px rgba(255, 183, 3, 0.22);
+
+  --motion-ease: 0.5, 0, 0.2, 1;
+  --motion-scale: 0.88;
+
+  --audio-wave: square;
+  --audio-base-freq: 220;
+  --audio-detune: -20;
+}
+
+/* --------------------------------------------------------------------------
+   9. Solid Gold — set15_gold
+   sampled: ground #090504 · gold #d4b369 · emissive #eccf88
+   Page carries a brown cast so the near-black sets (Chrome, Molten, Neon)
+   stay separable by hue as well as by accent.
+   -------------------------------------------------------------------------- */
+[data-theme='gold'] {
+  --surface-page: #201607;
+  --surface-page-image: radial-gradient(ellipse at 50% 32%, rgba(212, 179, 105, 0.17), transparent 60%);
+  --surface-card: #2b1f0d;
+  --surface-elevated: #3b2b13;
+
+  --text-primary: #f8ecd2;
+  --text-muted: #cbaf7c;
+  --text-inverse: #1a1307;
+
+  --choice-rock: #d9b76a;
+  --choice-rock-ink: #1a1307;
+  --choice-paper: #eed79a;
+  --choice-paper-ink: #1a1307;
+  --choice-scissors: #c99a4e;
+  --choice-scissors-ink: #1a1307;
+
+  --outcome-win: #a8e39a;
+  --outcome-lose: #f09a8a;
+  --outcome-tie: #cbaf7c;
 
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-choice: 0.75rem;
   --border-width: 1px;
-  --border-color: #dde2e5;
+  --border-color: #6b5528;
   --border-style: solid;
 
-  --font-display: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --display-transform: uppercase;
-  --display-tracking: 0.1em;
-
-  --shadow-card: 0 6px 20px rgba(20, 30, 38, 0.1);
-  --shadow-choice: 0 8px 22px rgba(20, 30, 38, 0.16);
-  --glow-choice: none;
-
-  --motion-ease: 0.3, 0.7, 0.3, 1;
-  --motion-scale: 0.9;
-
-  --audio-wave: triangle;
-  --audio-base-freq: 660;
-  --audio-detune: 0;
-}
-
-/* --------------------------------------------------------------------------
-   7. Zero Gravity — set08_zerog
-   sampled: void #1a2138 · nebula #241a3c · lit rim #323a5c
-   -------------------------------------------------------------------------- */
-[data-theme='zerog'] {
-  --surface-page: #111629;
-  --surface-page-image: radial-gradient(ellipse at 30% 20%, rgba(120, 130, 220, 0.2), transparent 55%),
-    radial-gradient(ellipse at 75% 75%, rgba(150, 100, 200, 0.16), transparent 55%);
-  --surface-card: #1a2039;
-  --surface-elevated: #262d4c;
-
-  --text-primary: #e8eaf7;
-  --text-muted: #aab0cf;
-  --text-inverse: #080b16;
-
-  --choice-rock: #7d8dd4;
-  --choice-rock-ink: #080b16;
-  --choice-paper: #9aa5e0;
-  --choice-paper-ink: #080b16;
-  --choice-scissors: #b18ad8;
-  --choice-scissors-ink: #080b16;
-
-  --outcome-win: #74e0a8;
-  --outcome-lose: #ff93a6;
-  --outcome-tie: #aab0cf;
-
-  --radius-sm: 1rem;
-  --radius-md: 1.5rem;
-  --radius-choice: 2rem;
-  --border-width: 1px;
-  --border-color: #333b60;
-  --border-style: solid;
-
-  --font-display: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
   --display-transform: none;
-  --display-tracking: 0.02em;
+  --display-tracking: 0.01em;
 
-  --shadow-card: 0 14px 40px rgba(0, 0, 0, 0.55);
-  --shadow-choice: 0 16px 34px rgba(0, 0, 0, 0.6);
-  --glow-choice: 0 0 26px rgba(140, 150, 230, 0.32);
+  --shadow-card: 0 0 0 1px #6b5528, 0 0 26px rgba(212, 179, 105, 0.2);
+  --shadow-choice: 0 0 24px rgba(212, 179, 105, 0.34);
+  --glow-choice: 0 0 18px rgba(236, 207, 136, 0.3);
 
-  --motion-ease: 0.34, 1.3, 0.64, 1;
-  --motion-scale: 1.25;
+  --motion-ease: 0.32, 0.72, 0, 1;
+  --motion-scale: 1.04;
 
   --audio-wave: triangle;
-  --audio-base-freq: 480;
-  --audio-detune: 5;
+  --audio-base-freq: 392;
+  --audio-detune: 2;
 }
 
 /* --------------------------------------------------------------------------
-   8. Retro Pixel — no art set, renders the built-in SVG icons.
-   Kept because it is the one identity the photographic sets structurally
-   cannot produce, and because it keeps the SVG path — which is also the
-   image-load fallback — shipped and exercised rather than rotting.
-   Press Start 2P is the only self-hosted webfont in the project.
+   10. Powder Burst — set16_powder
+   sampled: ground #373636 · pink #dd87ac · cyan #66acb6
+   Genuinely two-accent. The sampler's top-chroma pick was an olive #b9a433
+   that wins on raw saturation but misrepresents the set, so the pink and cyan
+   are used instead — per its own caveat. Page is warmed to separate it from
+   Mecha's cool gunmetal, the only other mid-grey theme.
    -------------------------------------------------------------------------- */
-[data-theme='pixel'] {
-  --surface-page: #1a1c2c;
-  --surface-page-image: repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.03) 0px,
-      rgba(255, 255, 255, 0.03) 2px,
-      transparent 2px,
-      transparent 8px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.03) 0px,
-      rgba(255, 255, 255, 0.03) 2px,
-      transparent 2px,
-      transparent 8px
-    );
-  --surface-card: #29366f;
-  --surface-elevated: #3b5dc9;
+[data-theme='powder'] {
+  --surface-page: #4a423e;
+  --surface-page-image: radial-gradient(ellipse at 50% 40%, rgba(221, 135, 172, 0.16), transparent 58%);
+  --surface-card: #554c47;
+  --surface-elevated: #635850;
 
-  --text-primary: #f4f4f4;
-  --text-muted: #b0c4de;
-  --text-inverse: #1a1c2c;
+  --text-primary: #fbf5f3;
+  --text-muted: #ded1cc;
+  --text-inverse: #1d1614;
 
-  --choice-rock: #41a6f6;
-  --choice-rock-ink: #1a1c2c;
-  --choice-paper: #ffcd75;
-  --choice-paper-ink: #1a1c2c;
-  --choice-scissors: #ef7d57;
-  --choice-scissors-ink: #1a1c2c;
+  --choice-rock: #e79ec0;
+  --choice-rock-ink: #1d1614;
+  --choice-paper: #8fd2da;
+  --choice-paper-ink: #1d1614;
+  --choice-scissors: #edc98a;
+  --choice-scissors-ink: #1d1614;
 
-  --outcome-win: #a7f070;
-  --outcome-lose: #f4b8c0;
-  --outcome-tie: #b0c4de;
+  --outcome-win: #9ce4b4;
+  --outcome-lose: #ffa6a6;
+  --outcome-tie: #cdbdb7;
 
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-choice: 0px;
-  --border-width: 4px;
-  --border-color: #f4f4f4;
+  --radius-sm: 0.375rem;
+  --radius-md: 1rem;
+  --radius-choice: 1.25rem;
+  --border-width: 1px;
+  --border-color: #6b615c;
   --border-style: solid;
 
-  --font-display: 'Press Start 2P', ui-monospace, monospace;
-  --font-body: 'Press Start 2P', ui-monospace, monospace;
-  --display-transform: uppercase;
-  --display-tracking: 0em;
+  --font-display: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: none;
+  --display-tracking: 0.01em;
 
-  --shadow-card: 6px 6px 0 #1a1c2c;
-  --shadow-choice: 5px 5px 0 #1a1c2c;
-  --glow-choice: none;
+  --shadow-card: 0 0 0 1px #6b615c, 0 8px 26px rgba(0, 0, 0, 0.34);
+  --shadow-choice: 0 0 26px rgba(221, 135, 172, 0.3);
+  --glow-choice: 0 0 20px rgba(102, 172, 182, 0.26);
 
-  --motion-ease: 0.6, 0, 0.9, 0.1;
-  --motion-scale: 0.7;
+  --motion-ease: 0.18, 0.8, 0.3, 1;
+  --motion-scale: 1.14;
 
-  --audio-wave: square;
-  --audio-base-freq: 523;
+  --audio-wave: sine;
+  --audio-base-freq: 520;
+  --audio-detune: 10;
+}
+
+/* --------------------------------------------------------------------------
+   11. Ink Brush — set17_ink
+   sampled: paper #f7f3e2 · wash #d5cfbd · brush black #1a1714
+   The only light theme among the eight, and warmer than Studio's neutral
+   grey-white, which is the pair most at risk of reading the same.
+   -------------------------------------------------------------------------- */
+[data-theme='ink'] {
+  --surface-page: #f6f1de;
+  --surface-page-image: radial-gradient(ellipse at 50% 20%, rgba(120, 100, 60, 0.07), transparent 62%);
+  --surface-card: #efe8d2;
+  --surface-elevated: #e6ddc4;
+
+  --text-primary: #1d1a15;
+  --text-muted: #5e564a;
+  --text-inverse: #f8f4e6;
+
+  --choice-rock: #2c2721;
+  --choice-rock-ink: #f8f4e6;
+  --choice-paper: #6d6250;
+  --choice-paper-ink: #f8f4e6;
+  --choice-scissors: #4a4238;
+  --choice-scissors-ink: #f8f4e6;
+
+  --outcome-win: #2f6b3a;
+  --outcome-lose: #98341f;
+  --outcome-tie: #5e564a;
+
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-choice: 0.375rem;
+  --border-width: 1px;
+  --border-color: #c6bda2;
+  --border-style: solid;
+
+  --font-display: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-body: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --display-transform: none;
+  --display-tracking: 0.01em;
+
+  --shadow-card: 0 1px 0 #c6bda2, 0 10px 24px rgba(60, 50, 30, 0.12);
+  --shadow-choice: 0 6px 18px rgba(60, 50, 30, 0.2);
+  --glow-choice: 0 0 0 rgba(0, 0, 0, 0);
+
+  --motion-ease: 0.4, 0, 0.2, 1;
+  --motion-scale: 1.16;
+
+  --audio-wave: triangle;
+  --audio-base-freq: 350;
+  --audio-detune: -4;
+}
+
+/* --------------------------------------------------------------------------
+   12. Clear Glass — set18_glass
+   sampled: ground #142b2f · teal #105763 · emissive #1e6b79
+   Deep sea-green rather than cyan, holding it apart from X-Ray's bright
+   clinical teal and Frozen Ice's navy.
+   -------------------------------------------------------------------------- */
+[data-theme='glass'] {
+  --surface-page: #0f2a2d;
+  --surface-page-image: linear-gradient(200deg, rgba(30, 107, 121, 0.2), transparent 58%);
+  --surface-card: #16383c;
+  --surface-elevated: #1f484d;
+
+  --text-primary: #dff0ef;
+  --text-muted: #9dc3c2;
+  --text-inverse: #06191b;
+
+  --choice-rock: #5fc2c4;
+  --choice-rock-ink: #06191b;
+  --choice-paper: #96dcd4;
+  --choice-paper-ink: #06191b;
+  --choice-scissors: #7ecfd8;
+  --choice-scissors-ink: #06191b;
+
+  --outcome-win: #8ae8b4;
+  --outcome-lose: #ffa09b;
+  --outcome-tie: #9dc3c2;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.875rem;
+  --radius-choice: 1.125rem;
+  --border-width: 1px;
+  --border-color: #2f6068;
+  --border-style: solid;
+
+  --font-display: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: none;
+  --display-tracking: 0.03em;
+
+  --shadow-card: 0 0 0 1px #2f6068, 0 0 28px rgba(30, 107, 121, 0.24);
+  --shadow-choice: 0 0 26px rgba(95, 194, 196, 0.28);
+  --glow-choice: 0 0 20px rgba(150, 220, 212, 0.24);
+
+  --motion-ease: 0.25, 0.75, 0.35, 1;
+  --motion-scale: 1.08;
+
+  --audio-wave: sine;
+  --audio-base-freq: 480;
   --audio-detune: 0;
 }

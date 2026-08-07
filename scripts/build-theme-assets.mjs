@@ -56,8 +56,26 @@ function kb(bytes) {
 
 const slugs = readdirSync(SRC).filter((d) => statSync(resolve(SRC, d)).isDirectory()).sort();
 
-rmSync(OUT, { recursive: true, force: true });
+/*
+ * Only the slugs present in THIS run are cleared, and only their own folders.
+ *
+ * This used to be `rmSync(OUT, { recursive: true })` followed by a mkdir, which
+ * is a live trap: assets-src is gitignored and rebuilt by hand, so running the
+ * script with a partial or empty source tree wiped every shipped art set AND
+ * the hand-written index.ts registry that lives at the output root — silently,
+ * with a successful exit code.
+ */
+if (slugs.length === 0) {
+  console.error(`No art sets found in ${SRC}. Refusing to run: with an empty`);
+  console.error('source tree there is nothing to build, and clearing output');
+  console.error('would delete shipped themes.');
+  process.exit(1);
+}
+
 mkdirSync(OUT, { recursive: true });
+for (const slug of slugs) {
+  rmSync(resolve(OUT, slug), { recursive: true, force: true });
+}
 
 let srcTotal = 0;
 let outTotal = 0;
