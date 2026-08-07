@@ -3,9 +3,22 @@ import type { Choice } from '../types/game';
 import { THEMES, type ThemeId } from '../constants/themes';
 import { getImageSet } from '../assets/themes';
 import { copy } from '../constants/copy';
-import { ChoiceButton } from './ChoiceButton';
+import { MoveArt } from './MoveArt';
 
-const PREVIEW_CHOICES: Choice[] = ['rock', 'paper', 'scissors'];
+/**
+ * One move stands in for the whole set. Rock fills the frame in every set and
+ * reads as a silhouette at tile size, where the open hand and the blades both
+ * go thin and ambiguous.
+ */
+const REPRESENTATIVE_MOVE: Choice = 'rock';
+
+/**
+ * The label sits on the art, so its contrast can't depend on the artwork. This
+ * scrim reaches 0.74 black behind the text band, which puts white type at 9:1
+ * even over a pure-white photo — the same guarantee in all eight themes,
+ * independent of what the image happens to be.
+ */
+const SCRIM = 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.74) 42%, rgba(0,0,0,0) 100%)';
 
 interface ThemePickerProps {
   theme: ThemeId;
@@ -13,43 +26,55 @@ interface ThemePickerProps {
 }
 
 /**
- * A radiogroup of live theme previews. Each option is scoped with its own
- * `data-theme`, so the swatch inside renders the REAL choice buttons and the
- * REAL artwork under that theme's tokens — the pattern only works because the
- * Tailwind utilities are built with `@theme inline` and resolve through the
- * cascade at runtime.
+ * A radiogroup of live theme previews: 2 x 4 on mobile, 4 x 2 from `sm` up.
+ * Eight tiles divide evenly into both, so no row is ever left orphaned.
  *
- * Previews use the 160px thumbnails and are lazy-loaded, so opening Home does
- * not pull the full-size art for seven themes at once.
+ * Each option is scoped with its own `data-theme`, so the tile renders under
+ * that theme's tokens — the pattern only works because the Tailwind utilities
+ * are built with `@theme inline` and resolve through the cascade at runtime.
  */
 export function ThemePicker({ theme, onChange }: ThemePickerProps) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const handleKeyDown = (event: React.KeyboardEvent, index: number) => {
-    const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown';
-    const back = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
-    if (!forward && !back) return;
+    // Read the real column count off the grid rather than duplicating the
+    // breakpoint in JS, so arrow keys move the way the tiles actually look.
+    const columns = gridRef.current
+      ? getComputedStyle(gridRef.current).gridTemplateColumns.split(' ').length
+      : 1;
+
+    const step =
+      event.key === 'ArrowRight' ? 1
+      : event.key === 'ArrowLeft' ? -1
+      : event.key === 'ArrowDown' ? columns
+      : event.key === 'ArrowUp' ? -columns
+      : 0;
+
+    if (step === 0) return;
 
     event.preventDefault();
-    const next = (index + (forward ? 1 : -1) + THEMES.length) % THEMES.length;
+    const next = (index + step + THEMES.length) % THEMES.length;
     onChange(THEMES[next].id);
     refs.current[next]?.focus();
   };
 
   return (
-    <section className="w-full space-y-3">
+    <section className="w-full space-y-4">
       <p className="display-type text-center text-sm font-semibold text-muted">
         {copy.theme.label}
       </p>
 
       <div
+        ref={gridRef}
         role="radiogroup"
         aria-label={copy.theme.label}
-        className="flex flex-wrap items-stretch justify-center gap-3"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-4"
       >
         {THEMES.map((option, index) => {
           const selected = option.id === theme;
           const imageSet = getImageSet(option.imageSlug);
+
           return (
             <button
               key={option.id}
@@ -71,31 +96,59 @@ export function ThemePicker({ theme, onChange }: ThemePickerProps) {
                 borderWidth: selected ? '3px' : 'var(--border-width)',
                 borderColor: 'var(--border-color)',
                 borderStyle: 'var(--border-style)',
-                backgroundColor: 'var(--surface-card)',
-                backgroundImage: 'var(--surface-page-image)',
                 boxShadow: selected ? 'var(--shadow-card)' : undefined,
               }}
-              className={`flex cursor-pointer flex-col items-center gap-2 p-2.5 transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current hover:scale-[1.03] ${
-                selected ? 'scale-[1.03]' : 'opacity-85'
+              className={`group relative block cursor-pointer overflow-hidden transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current hover:scale-[1.03] ${
+                selected ? 'scale-[1.03]' : ''
               }`}
             >
-              <span className="flex items-center gap-1.5">
-                {PREVIEW_CHOICES.map((choice) => (
-                  <ChoiceButton key={choice} choice={choice} imageSet={imageSet} preview />
-                ))}
-              </span>
+              <span className="relative flex aspect-square w-full items-center justify-center overflow-hidden bg-rock text-rock-ink">
+                <MoveArt
+                  choice={REPRESENTATIVE_MOVE}
+                  imageSet={imageSet}
+                  size="full"
+                  decorative
+                  // Only the active theme's art is already in memory; the rest
+                  // are deferred so opening Home doesn't pull eight images.
+                  lazy={!selected}
+                  iconClassName="h-1/2 w-1/2"
+                />
 
-              <span
-                aria-hidden="true"
-                className="display-type theme-preview-label text-[0.68rem] font-bold text-ink"
-              >
-                {option.name}
-              </span>
+                {/* Unselected tiles are veiled rather than made translucent: an
+                    opacity on the button would fade the label along with the
+                    art and quietly cost it its contrast. */}
+                {!selected && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 bg-black/30 transition-colors group-hover:bg-black/10"
+                  />
+                )}
 
-              {/* Selection is announced by aria-checked and marked with a glyph,
-                  so it never relies on the highlight colour alone. */}
-              <span className="text-[0.6rem] font-bold text-muted" aria-hidden="true">
-                {selected ? copy.theme.selectedMark : ' '}
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5"
+                  style={{ backgroundImage: SCRIM }}
+                />
+
+                <span
+                  aria-hidden="true"
+                  className="display-type theme-preview-label absolute inset-x-0 bottom-0 px-1.5 pb-1.5 text-[0.7rem] leading-tight font-bold text-white"
+                >
+                  {option.name}
+                </span>
+
+                {/* Selection is carried four ways — a glyph badge, a heavier
+                    border, the veil lifting, and aria-checked — so it never
+                    rests on colour alone. */}
+                {selected && (
+                  <span
+                    aria-hidden="true"
+                    style={{ borderRadius: 'var(--radius-sm)' }}
+                    className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center bg-scissors text-sm font-black text-scissors-ink"
+                  >
+                    {copy.theme.selectedMark}
+                  </span>
+                )}
               </span>
             </button>
           );

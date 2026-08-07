@@ -26,18 +26,21 @@ export function HomeScreen({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
-      className="flex flex-col items-center gap-8 text-center"
+      // Deliberate vertical rhythm instead of even gaps: the masthead is one
+      // block, and the two choices below it are a tighter pair, so the screen
+      // reads as composed top-down rather than floating in the middle.
+      className="flex flex-col items-center gap-7 text-center sm:gap-9"
     >
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {/* "EvenShock" is a single unbreakable word, so a fixed type size
             overflows narrow screens in the wide letter-spaced display faces
             (Marble, Chrome, X-Ray, Product) — measured spilling ~60px past a
             320px viewport at text-5xl. Scaling with the viewport up to the old
             size keeps every theme inside the page. */}
-        <h1 className="display-type text-[clamp(1.9rem,9vw,3rem)] font-extrabold text-ink sm:text-6xl">
+        <h1 className="display-type text-[clamp(2.15rem,10.5vw,4rem)] leading-[0.95] font-extrabold text-ink sm:text-7xl">
           {copy.home.title}
         </h1>
-        <p className="text-lg text-muted">{copy.home.subtitle}</p>
+        <p className="text-base text-muted sm:text-lg">{copy.home.subtitle}</p>
       </div>
 
       <div className="w-full space-y-3">
@@ -51,7 +54,9 @@ export function HomeScreen({
             others. Equal thirds keep the three formats on one row in every
             theme; a long label wraps inside its own pill instead. */}
         <div
-          className="grid grid-cols-3 items-stretch gap-1.5 sm:gap-2"
+          // Capped well inside Home's width: the theme grid wants all 768px,
+          // but three format pills stretched that far read as a toolbar.
+          className="mx-auto grid max-w-md grid-cols-3 items-stretch gap-1.5 sm:gap-2"
           role="radiogroup"
           aria-label={copy.home.formatLabel}
         >

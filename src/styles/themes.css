@@ -28,6 +28,10 @@
    Text
      --text-primary        Body and headings. Must hit WCAG AA on --surface-page
      --text-muted          Secondary/labels. Must hit AA (4.5:1) on --surface-page
+                           and --surface-card ONLY. It is NOT guaranteed on
+                           --surface-elevated: Retro Pixel's elevated blue is a
+                           bright palette colour and measures 3.3:1 there. Use
+                           --text-primary for copy on elevated fills.
      --text-inverse        Text sitting ON a choice colour or elevated fill
    Choices — each theme picks its own trio.
      Since the choice buttons now render ARTWORK, these no longer tint the

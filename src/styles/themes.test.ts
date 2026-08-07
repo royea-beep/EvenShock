@@ -80,6 +80,18 @@ function themeBlock(id: string): string {
 const ASSET_ROOT = resolve(here, '../assets/themes');
 const MOVES = ['rock', 'paper', 'scissors'] as const;
 
+describe('theme picker grid', () => {
+  /**
+   * The picker lays out 2 columns on mobile and 4 from `sm` up. A theme count
+   * that isn't a multiple of 4 leaves a short final row centred under a full
+   * one, which reads as a layout bug rather than a decision — that is exactly
+   * what nine or seven themes would do here.
+   */
+  it('has a theme count that fills both the 2-column and 4-column grid', () => {
+    expect(THEMES.length % 4, `${THEMES.length} themes leaves an orphaned row`).toBe(0);
+  });
+});
+
 describe('theme art sets', () => {
   const withArt = THEMES.filter((t) => t.imageSlug);
 

@@ -51,6 +51,17 @@ export const copy = {
   },
   theme: {
     label: 'Pick a look',
-    selectedMark: '● SELECTED',
+    selectedMark: '✓',
+    selectedLabel: 'Selected',
+  },
+  nav: {
+    /** Shown when leaving costs nothing (match already over). */
+    backToHome: 'Back to home',
+    /** Shown mid-match, where leaving forfeits the score. */
+    leaveMatch: 'Leave match',
+    confirmTitle: 'Leave this match?',
+    confirmBody: 'The current score will be lost.',
+    confirmLeave: 'Leave match',
+    confirmStay: 'Keep playing',
   },
 } as const;

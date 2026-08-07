@@ -10,6 +10,7 @@ import { HomeScreen } from './components/screens/HomeScreen';
 import { RoundScreen } from './components/screens/RoundScreen';
 import { MatchEndScreen } from './components/screens/MatchEndScreen';
 import { MuteToggle } from './components/MuteToggle';
+import { LeaveMatchControl } from './components/LeaveMatchControl';
 
 function App() {
   const game = useGame();
@@ -42,11 +43,24 @@ function App() {
     <>
       <MuteToggle muted={muted} onToggle={toggleMuted} />
 
+      {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
+          which getScreen maps to 'home', and deliberately keeps `format`. */}
+      {screen !== 'home' && (
+        <LeaveMatchControl
+          onLeave={game.playAgain}
+          // Mid-match with points on the board, leaving costs something. On the
+          // match-end screen it costs nothing, so don't ask.
+          confirmFirst={screen === 'round' && game.score.player + game.score.opponent > 0}
+        />
+      )}
+
       <motion.main
         animate={shakeControls}
         className="flex min-h-dvh items-center justify-center p-6"
       >
-        <div className="w-full max-w-xl">
+        {/* Home carries an eight-tile grid and wants the extra width; a round
+            is two hands and a caption, which reads better held narrow. */}
+        <div className={`w-full ${screen === 'home' ? 'max-w-3xl' : 'max-w-xl'}`}>
           <AnimatePresence mode="wait">
             {screen === 'home' && (
               <HomeScreen
