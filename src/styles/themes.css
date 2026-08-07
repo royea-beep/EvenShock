@@ -41,6 +41,10 @@
      --choice-rock-ink / -paper-ink / -scissors-ink   Text/icon on that fill
    Outcomes (always paired with text + a ▲/▼/＝ marker, never colour alone)
      --outcome-win / --outcome-lose / --outcome-tie
+                           Toned against --surface-page, and guaranteed AA
+                           THERE ONLY. On --surface-elevated they fall as low
+                           as 3.3:1 (Retro Pixel) and 3.8:1 (Marble), so put
+                           outcome-coloured text on the page surface.
    Shape
      --radius-sm / --radius-md   Panel + control corner radii
      --radius-choice             Choice-button radius. Photographic sets use a

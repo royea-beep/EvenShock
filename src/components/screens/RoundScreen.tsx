@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import type { Choice, MatchStatus, RoundOutcome, Score } from '../../types/game';
+import type { Choice, MatchFormat, MatchStatus, RoundOutcome, Score } from '../../types/game';
 import { copy } from '../../constants/copy';
-import { SHAKE_BEATS, SHAKE_BEAT_MS } from '../../constants/gameConfig';
+import { ADVANCE_FADE_MS, SHAKE_BEATS, SHAKE_BEAT_MS } from '../../constants/gameConfig';
 import { ChoiceButton } from '../ChoiceButton';
 import { HandsFaceOff } from '../HandsFaceOff';
+import { MatchStatusBar, OUTCOME_MARK } from '../MatchStatusBar';
 import { play } from '../../utils/sound';
+import type { RoundEntry } from '../../utils/roundHistory';
 import type { ImageSet } from '../../assets/themes';
 
 const CHOICES: Choice[] = ['rock', 'paper', 'scissors'];
@@ -17,14 +19,6 @@ const FLASH_CLASSES: Record<RoundOutcome, string> = {
   win: 'bg-win',
   lose: 'bg-lose',
   tie: 'bg-tie',
-};
-
-/* Outcome is carried by a glyph as well as color, so win/lose/tie stay
-   distinguishable for colorblind players in every theme. */
-const OUTCOME_MARK: Record<RoundOutcome, string> = {
-  win: '▲',
-  lose: '▼',
-  tie: '＝',
 };
 
 const OUTCOME_TEXT_CLASSES: Record<RoundOutcome, string> = {
@@ -46,6 +40,8 @@ interface RoundScreenProps {
   score: Score;
   matchStatus: MatchStatus;
   roundNumber: number;
+  format: MatchFormat;
+  history: RoundEntry[];
   imageSet: ImageSet | null;
   onPick: (choice: Choice) => void;
   onContinue: () => void;
@@ -58,6 +54,8 @@ export function RoundScreen({
   score,
   matchStatus,
   roundNumber,
+  format,
+  history,
   imageSet,
   onPick,
   onContinue,
@@ -73,14 +71,33 @@ export function RoundScreen({
   const beatIndex = useShakeBeats(phase === 'revealing', roundNumber);
 
   // The 4th beat: "Shoot!" lands with the snap, then gives way to the outcome.
+  //
+  // useLayoutEffect, not useEffect: the frame in which `phase` first becomes
+  // 'result' renders with showShoot still false, so a passive effect let the
+  // outcome line paint for one frame BEFORE "Shoot!" — the result spoiling
+  // itself a beat early. A layout effect flips it before paint, so that frame
+  // never reaches the screen.
   const [showShoot, setShowShoot] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (phase !== 'result') {
       setShowShoot(false);
       return;
     }
     setShowShoot(true);
     const id = window.setTimeout(() => setShowShoot(false), SHOOT_HOLD_MS);
+    return () => window.clearTimeout(id);
+  }, [phase, roundNumber]);
+
+  // The advance button fades in and stays inert for a beat after the outcome.
+  // Both landed in the same frame before, so a quick second tap could dismiss
+  // a result before it had been read.
+  const [advanceReady, setAdvanceReady] = useState(false);
+  useEffect(() => {
+    if (phase !== 'result') {
+      setAdvanceReady(false);
+      return;
+    }
+    const id = window.setTimeout(() => setAdvanceReady(true), SHOOT_HOLD_MS + ADVANCE_FADE_MS);
     return () => window.clearTimeout(id);
   }, [phase, roundNumber]);
 
@@ -100,8 +117,17 @@ export function RoundScreen({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
-        className="flex flex-col items-center gap-8 text-center"
+        className="flex flex-col items-center gap-6 text-center"
       >
+        {/* The standing belongs here most of all: this is the moment the player
+            is deciding, and it used to show nothing but the three buttons. */}
+        <MatchStatusBar
+          score={score}
+          roundNumber={roundNumber}
+          format={format}
+          history={history}
+        />
+
         <p className="display-type text-lg font-semibold text-muted">{copy.game.prompt}</p>
         {/* gap-3 on mobile is load-bearing: three 112px buttons plus gap-6 came
             to 384px against 382px of usable width on a 430px phone, wrapping
@@ -122,6 +148,8 @@ export function RoundScreen({
 
   return (
     <div className="flex flex-col items-center gap-6 text-center">
+      <MatchStatusBar score={score} roundNumber={roundNumber} format={format} history={history} />
+
       {/* The hands live here across BOTH revealing and result, so the reveal is
           a snap of the same elements rather than a swap between screens. */}
       <div className="relative w-full py-4">
@@ -199,11 +227,12 @@ export function RoundScreen({
         <motion.button
           type="button"
           onClick={onContinue}
+          disabled={!advanceReady}
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+          animate={{ opacity: advanceReady ? 1 : 0.35 }}
+          transition={{ duration: ADVANCE_FADE_MS / 1000, ease: 'easeOut' }}
+          whileHover={advanceReady ? { scale: 1.05 } : undefined}
+          whileTap={advanceReady ? { scale: 0.95 } : undefined}
           style={{
             borderRadius: 'var(--radius-themed-md)',
             boxShadow: 'var(--shadow-card)',

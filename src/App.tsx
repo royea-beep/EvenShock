@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useAnimationControls, useReducedMotion } from 
 import { useGame } from './hooks/useGame';
 import { useTheme } from './hooks/useTheme';
 import { useThemeImages } from './hooks/useThemeImages';
+import { useRoundHistory } from './hooks/useRoundHistory';
 import { useMuted } from './hooks/useMuted';
 import { getScreen } from './utils/getScreen';
 import { unlockAudio } from './utils/sound';
@@ -18,6 +19,8 @@ function App() {
   const { muted, toggleMuted } = useMuted();
   const { theme, setTheme } = useTheme();
   const imageSet = useThemeImages(theme);
+  // Derived in the UI layer, deliberately: useGame stays the multiplayer seam.
+  const history = useRoundHistory(game);
   const reducedMotion = useReducedMotion();
 
   const shakeControls = useAnimationControls();
@@ -82,6 +85,8 @@ function App() {
                 score={game.score}
                 matchStatus={game.matchStatus}
                 roundNumber={game.roundNumber}
+                format={game.format}
+                history={history}
                 imageSet={imageSet}
                 onPick={game.pickChoice}
                 onContinue={game.continueFromResult}
@@ -93,7 +98,13 @@ function App() {
                 key="matchEnd"
                 score={game.score}
                 matchWinner={game.matchWinner}
-                onPlayAgain={game.playAgain}
+                format={game.format}
+                history={history}
+                // Straight into another match on the same theme and format.
+                // startMatch already performs the full reset, which is also what
+                // clears the derived history.
+                onPlayAgain={game.startMatch}
+                onChangeLook={game.playAgain}
               />
             )}
           </AnimatePresence>

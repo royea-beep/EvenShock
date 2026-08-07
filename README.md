@@ -66,6 +66,16 @@ A round's picking, revealing, and result states are all **one** `RoundScreen`, d
 - **Sound:** short SFX synthesized at runtime with the Web Audio API — no audio files, nothing to preload, nothing sampled. The context is only created from a real user gesture, so nothing trips browser autoplay policies, and any failure degrades to silence rather than breaking the game. Mute persists in localStorage.
 - **Accessibility:** `prefers-reduced-motion` drops the shake, the screen knock, the flashes and the confetti, leaving a plain crossfade. Every outcome is stated in text, so nothing depends on color alone.
 
+## Match context
+
+A status bar rides above every phase of a round in best-of-3 and best-of-5 — including while you are choosing, which is the moment the standing actually matters. It carries the round number, the score, the format, and a W/L/T trail of the match so far. Single rounds have no standing to track, so it stays hidden.
+
+The match-end screen recaps the rounds, shows win rate (ties excluded from the denominator), rounds played and most-played move, offers a plain-text result to copy, and gives two exits: **Play again** (same look and format) and **Change look** (back to Home).
+
+**Round history is derived in the UI layer, not stored in `useGame`.** Each `roundNumber` resolves exactly once, so watching for a completed round reconstructs the whole trail — see `utils/roundHistory.ts`, which is a pure reducer so the reset behaviour is testable without rendering. Keeping it out of `useGame` matters: the hook is the multiplayer seam, and every field added to it is a field a real backend has to reproduce.
+
+The reset is exact rather than heuristic. `roundNumber === 1` with no pick and no result is reachable only from `startMatch()` or `playAgain()`, and cannot recur mid-match — a played round either still shows its result or has already advanced the round number, ties included. So a new match always starts with an empty trail, whichever way it began.
+
 `useGame()` exposes `playerChoice`, `botChoice`, `roundResult`, `score`, `format`, `matchStatus`, and the actions to pick a choice, start a match, advance past a round result, and play again. `App.tsx` derives which screen to show from that state alone — there's no separate screen state to keep in sync.
 
 ## Themes

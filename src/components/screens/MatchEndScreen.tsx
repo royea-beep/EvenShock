@@ -1,19 +1,34 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import type { Score } from '../../types/game';
+import type { MatchFormat, Score } from '../../types/game';
 import { copy } from '../../constants/copy';
 import { Confetti } from '../Confetti';
+import { HistoryTrail, OUTCOME_MARK } from '../MatchStatusBar';
 import { play } from '../../utils/sound';
+import { getMatchStats, type RoundEntry } from '../../utils/roundHistory';
 
 interface MatchEndScreenProps {
   score: Score;
   matchWinner: 'player' | 'opponent' | null;
+  format: MatchFormat;
+  history: RoundEntry[];
+  /** Straight into another match, same theme and format. */
   onPlayAgain: () => void;
+  /** Back to Home, where the look and format can be changed. */
+  onChangeLook: () => void;
 }
 
-export function MatchEndScreen({ score, matchWinner, onPlayAgain }: MatchEndScreenProps) {
+export function MatchEndScreen({
+  score,
+  matchWinner,
+  format,
+  history,
+  onPlayAgain,
+  onChangeLook,
+}: MatchEndScreenProps) {
   const reducedMotion = useReducedMotion();
   const playerWon = matchWinner === 'player';
+  const stats = getMatchStats(history);
 
   const soundPlayed = useRef(false);
   useEffect(() => {
@@ -33,10 +48,11 @@ export function MatchEndScreen({ score, matchWinner, onPlayAgain }: MatchEndScre
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
-        // Losing the match reads as subdued rather than harsh: the whole panel
-        // desaturates instead of turning aggressive.
-        className={`flex flex-col items-center gap-8 text-center ${
-          playerWon ? '' : 'opacity-90 saturate-50'
+        // Losing reads as subdued, never harsh: the panel desaturates slightly
+        // rather than turning aggressive. The recap and stats stay fully legible
+        // either way — a loss should still be readable, not punished.
+        className={`flex flex-col items-center gap-6 text-center ${
+          playerWon ? '' : 'saturate-75'
         }`}
       >
         <motion.h2
@@ -52,30 +68,192 @@ export function MatchEndScreen({ score, matchWinner, onPlayAgain }: MatchEndScre
           <p className="display-type text-sm font-semibold text-muted">
             {copy.matchEnd.finalScoreLabel}
           </p>
-          <p className="display-type text-3xl font-bold text-ink">
+          <p className="display-type text-3xl font-bold text-ink tabular-nums">
             {score.player} – {score.opponent}
           </p>
         </div>
 
-        <motion.button
-          type="button"
-          onClick={onPlayAgain}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        {history.length > 0 && (
+          <section className="w-full space-y-2">
+            <p className="display-type text-sm font-semibold text-muted">
+              {copy.matchEnd.recapLabel}
+            </p>
+            <HistoryTrail history={history} />
+          </section>
+        )}
+
+        <Stats stats={stats} />
+
+        <ShareResult score={score} format={format} history={history} winner={matchWinner} />
+
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+          <ExitButton onClick={onPlayAgain} emphasis={playerWon}>
+            {copy.matchEnd.playAgainButton}
+          </ExitButton>
+          <ExitButton onClick={onChangeLook} emphasis={false}>
+            {copy.matchEnd.changeLookButton}
+          </ExitButton>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+function Stats({ stats }: { stats: ReturnType<typeof getMatchStats> }) {
+  const winRate =
+    stats.winRate === null
+      ? copy.matchEnd.winRateAllTies
+      : `${Math.round(stats.winRate * 100)}%`;
+
+  return (
+    <dl className="flex w-full flex-wrap justify-center gap-2">
+      <Stat label={copy.matchEnd.statsWinRate} value={winRate} />
+      <Stat label={copy.matchEnd.statsRounds} value={String(stats.played)} />
+      <Stat
+        label={copy.matchEnd.statsTopMove}
+        value={stats.topMove ? `${copy.choices[stats.topMove.choice]} ×${stats.topMove.count}` : '—'}
+      />
+    </dl>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        borderRadius: 'var(--radius-themed-md)',
+        borderWidth: 'var(--border-width)',
+        borderColor: 'var(--border-color)',
+        borderStyle: 'var(--border-style)',
+      }}
+      className="flex min-w-24 flex-1 flex-col items-center gap-0.5 bg-card px-3 py-2"
+    >
+      <dt className="display-type text-[0.65rem] font-semibold text-muted">{label}</dt>
+      <dd className="display-type text-base font-bold text-ink tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+function ExitButton({
+  onClick,
+  emphasis,
+  children,
+}: {
+  onClick: () => void;
+  emphasis: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      whileHover={{ scale: 1.04 }}
+      whileTap={{ scale: 0.96 }}
+      style={{
+        borderRadius: 'var(--radius-themed-md)',
+        boxShadow: 'var(--shadow-card)',
+        borderWidth: 'var(--border-width)',
+        borderColor: 'var(--border-color)',
+        borderStyle: 'var(--border-style)',
+      }}
+      className={`display-type flex-1 cursor-pointer px-8 py-3.5 text-base font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current ${
+        emphasis ? 'bg-scissors text-scissors-ink' : 'bg-elevated text-ink'
+      }`}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
+/** Builds the plain-text result line. Exported for testing. */
+export function buildShareText(
+  score: Score,
+  format: MatchFormat,
+  history: RoundEntry[],
+  winner: 'player' | 'opponent' | null,
+): string {
+  const trail = history.map((e) => OUTCOME_MARK[e.outcome]).join('');
+  const headline = winner === 'player' ? 'I won' : winner === 'opponent' ? 'I lost' : 'We drew';
+  return [
+    `EvenShock — ${copy.formats[format]}`,
+    `${headline} ${score.player}–${score.opponent}`,
+    trail,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function ShareResult({
+  score,
+  format,
+  history,
+  winner,
+}: {
+  score: Score;
+  format: MatchFormat;
+  history: RoundEntry[];
+  winner: 'player' | 'opponent' | null;
+}) {
+  const [state, setState] = useState<'idle' | 'copied' | 'manual'>('idle');
+  const fallbackRef = useRef<HTMLTextAreaElement>(null);
+  const text = buildShareText(score, format, history, winner);
+
+  const copyText = async () => {
+    // navigator.clipboard is unavailable on insecure origins and in some
+    // in-app browsers, so failure is expected rather than exceptional: fall
+    // back to exposing the text pre-selected for a manual copy.
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('no clipboard api');
+      await navigator.clipboard.writeText(text);
+      setState('copied');
+      window.setTimeout(() => setState('idle'), 1800);
+    } catch {
+      setState('manual');
+      window.setTimeout(() => {
+        fallbackRef.current?.focus();
+        fallbackRef.current?.select();
+      }, 0);
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={copyText}
+        style={{
+          borderRadius: 'var(--radius-themed-md)',
+          borderWidth: 'var(--border-width)',
+          borderColor: 'var(--border-color)',
+          borderStyle: 'var(--border-style)',
+        }}
+        className="display-type cursor-pointer bg-card px-5 py-2 text-sm font-semibold text-ink hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+      >
+        {state === 'copied' ? copy.matchEnd.shareCopied : copy.matchEnd.shareButton}
+      </button>
+
+      {/* Announced politely so the outcome of pressing the button is not
+          visual-only for screen reader users. */}
+      <span aria-live="polite" className="sr-only">
+        {state === 'copied' ? copy.matchEnd.shareCopied : ''}
+      </span>
+
+      {state === 'manual' && (
+        <textarea
+          ref={fallbackRef}
+          readOnly
+          rows={3}
+          value={text}
+          aria-label={copy.matchEnd.shareFailed}
           style={{
-            borderRadius: 'var(--radius-themed-md)',
-            boxShadow: 'var(--shadow-card)',
+            borderRadius: 'var(--radius-sm)',
             borderWidth: 'var(--border-width)',
             borderColor: 'var(--border-color)',
             borderStyle: 'var(--border-style)',
           }}
-          className={`display-type cursor-pointer px-10 py-4 text-lg font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current ${
-            playerWon ? 'bg-scissors text-scissors-ink' : 'bg-elevated text-ink'
-          }`}
-        >
-          {copy.matchEnd.playAgainButton}
-        </motion.button>
-      </motion.div>
-    </>
+          className="w-full resize-none bg-card p-2 text-center text-xs text-ink"
+        />
+      )}
+    </div>
   );
 }

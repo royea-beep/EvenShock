@@ -11,3 +11,12 @@ export const SHAKE_BEATS = 3;
  * can't be read early.
  */
 export const REVEAL_DELAY_MS = SHAKE_BEATS * SHAKE_BEAT_MS;
+
+/**
+ * How long the advance button fades in, and stays inert, after the outcome
+ * appears. Measured: outcome and button previously landed in the same frame,
+ * so a fast second tap could dismiss a result before it had been read. Short
+ * enough not to slow anyone down — the player still sets the pace, since
+ * nothing auto-advances.
+ */
+export const ADVANCE_FADE_MS = 250;

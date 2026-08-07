@@ -37,6 +37,18 @@ export const copy = {
     nextRoundButton: 'Next round',
     seeResultsButton: 'See results',
   },
+  status: {
+    roundLabel: 'Round',
+    youLabel: 'You',
+    botLabel: 'Bot',
+    historyLabel: 'Rounds so far',
+    /** Screen-reader wording for a history pill; the glyph alone is visual. */
+    historyEntry: {
+      win: 'won',
+      lose: 'lost',
+      tie: 'tied',
+    } satisfies Record<RoundOutcome, string>,
+  },
   matchEnd: {
     winnerBanner: {
       player: 'You won the match!',
@@ -44,6 +56,16 @@ export const copy = {
     } as Record<'player' | 'opponent', string>,
     finalScoreLabel: 'Final score',
     playAgainButton: 'Play again',
+    changeLookButton: 'Change look',
+    recapLabel: 'How it went',
+    statsWinRate: 'Win rate',
+    statsTopMove: 'Most played',
+    statsRounds: 'Rounds',
+    shareButton: 'Copy result',
+    shareCopied: 'Copied',
+    shareFailed: 'Press to select, then copy',
+    /** Ties are excluded from win rate, so say so rather than imply otherwise. */
+    winRateAllTies: '—',
   },
   sound: {
     mute: 'Mute sound effects',
