@@ -57,13 +57,22 @@ function App() {
         />
       )}
 
-      <motion.main
-        animate={shakeControls}
-        className="flex min-h-dvh items-center justify-center p-6"
-      >
-        {/* Home carries an eight-tile grid and wants the extra width; a round
-            is two hands and a caption, which reads better held narrow. */}
-        <div className={`w-full ${screen === 'home' ? 'max-w-3xl' : 'max-w-xl'}`}>
+      <main className="flex min-h-dvh items-center justify-center p-6">
+        {/* Home carries an eight-tile grid and wants the extra width; the round
+            screen runs full width so the reveal has a stage to cross, and
+            constrains its own bar and caption internally.
+
+            The loss shake lives on THIS element rather than on <main>. main
+            spans the whole viewport, so translating it pushed 6px of horizontal
+            scroll on every losing round — invisible until the reveal was
+            sampled frame by frame. This container sits inside main's 24px
+            padding, where a 6px knock has room to happen. */}
+        <motion.div
+          animate={shakeControls}
+          className={`w-full ${
+            screen === 'home' ? 'max-w-3xl' : screen === 'round' ? 'max-w-none' : 'max-w-xl'
+          }`}
+        >
           <AnimatePresence mode="wait">
             {screen === 'home' && (
               <HomeScreen
@@ -108,8 +117,8 @@ function App() {
               />
             )}
           </AnimatePresence>
-        </div>
-      </motion.main>
+        </motion.div>
+      </main>
     </>
   );
 }

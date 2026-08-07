@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { Choice, RoundOutcome } from '../types/game';
 import type { ImageSet } from '../assets/themes';
 import { copy } from '../constants/copy';
-import { SHAKE_BEATS, SHAKE_BEAT_MS } from '../constants/gameConfig';
+import { SHAKE_BEATS, SHAKE_BEAT_MS, REVEAL_DELAY_MS } from '../constants/gameConfig';
+import { SHUFFLE_STEP_MS, shuffleMoveAt } from '../utils/shuffle';
 import { readThemeMotion } from '../utils/themeTokens';
 import { MoveArt } from './MoveArt';
 
@@ -12,15 +14,28 @@ const HAND_CLASSES: Record<Choice, string> = {
   scissors: 'bg-scissors text-scissors-ink',
 };
 
+/**
+ * Hand size, viewport-relative so the reveal fills whatever screen it is on.
+ * The upper bound keeps a 1900px desktop from turning them into billboards;
+ * the 40vw middle term is set by the narrowest phone we support — two hands
+ * plus the VS gutter has to fit 320px without the approach ever pushing a
+ * scrollbar.
+ */
+const HAND_SIZE = 'clamp(6rem, 40vw, 24rem)';
+
+/** Resting offsets, as a share of each hand's own width. */
+const REST_X = 7;
+/** Where each hand starts: comfortably past its own edge of the screen. */
+const ENTER_X = 190;
+
 type Phase = 'revealing' | 'result';
 
 interface HandsFaceOffProps {
   playerChoice: Choice;
-  /** null while the build-up is still running — the bot's pick doesn't exist yet. */
+  /** null while the build-up runs — the bot's pick does not exist yet. */
   botChoice: Choice | null;
   phase: Phase;
   roundResult: RoundOutcome | null;
-  /** Bumped each round so the snap animation re-fires on every reveal. */
   roundKey: number;
   imageSet: ImageSet | null;
 }
@@ -34,24 +49,31 @@ export function HandsFaceOff({
   imageSet,
 }: HandsFaceOffProps) {
   return (
-    <div className="flex items-center justify-center gap-4 sm:gap-16">
+    // overflow-x is clipped HERE and nowhere wider, so the hands can start off
+    // screen without ever creating a scrollbar — and a genuine overflow bug
+    // anywhere else on the page still shows up in document.scrollWidth.
+    <div className="relative z-10 flex w-full items-center justify-center overflow-x-clip py-2">
       <Hand
+        side="player"
         choice={playerChoice}
         label={copy.game.youLabel}
         phase={phase}
         roundKey={roundKey}
-        won={roundResult === 'win'}
-        mirrored={false}
+        outcome={roundResult}
         imageSet={imageSet}
       />
-      <span className="display-type text-2xl font-black text-muted">VS</span>
+
+      <span className="display-type z-10 px-1 text-lg font-black text-muted sm:px-3 sm:text-2xl">
+        VS
+      </span>
+
       <Hand
+        side="bot"
         choice={botChoice}
         label={copy.game.opponentLabel}
         phase={phase}
         roundKey={roundKey}
-        won={roundResult === 'lose'}
-        mirrored
+        outcome={roundResult}
         imageSet={imageSet}
       />
     </div>
@@ -59,47 +81,52 @@ export function HandsFaceOff({
 }
 
 interface HandProps {
+  side: 'player' | 'bot';
   choice: Choice | null;
   label: string;
   phase: Phase;
   roundKey: number;
-  won: boolean;
-  mirrored: boolean;
+  outcome: RoundOutcome | null;
   imageSet: ImageSet | null;
 }
 
-function Hand({ choice, label, phase, roundKey, won, mirrored, imageSet }: HandProps) {
+function Hand({ side, choice, label, phase, roundKey, outcome, imageSet }: HandProps) {
   const reducedMotion = useReducedMotion();
-
-  // Easing and pacing are part of each theme's identity.
   const { ease, scale: motionScale } = readThemeMotion();
-  const beatSeconds = (SHAKE_BEAT_MS / 1000) * motionScale;
 
-  // Every animated property below is transform or opacity only, so the whole
-  // reveal stays on the compositor even though the hands are now bitmaps.
-  const animation = reducedMotion
-    ? { animate: { opacity: 1 }, transition: { duration: 0.25 } }
-    : phase === 'revealing'
-      ? {
-          animate: { y: [0, -18, 0], rotate: [0, mirrored ? 6 : -6, 0] },
-          transition: {
-            duration: beatSeconds,
-            repeat: SHAKE_BEATS - 1,
-            ease: 'easeInOut' as const,
-          },
-        }
-      : {
-          animate: { y: 0, rotate: 0, scale: won ? [1, 1.35, 1.12] : [1, 1.28, 1] },
-          transition: { duration: 0.34 * motionScale, ease, times: [0, 0.45, 1] },
-        };
+  // The decoy cycle. Only the bot shuffles, only during the build-up, and never
+  // under reduced motion — where the whole point is that nothing churns.
+  const shuffling = side === 'bot' && phase === 'revealing' && !reducedMotion;
+  const decoy = useShuffleMove(shuffling, roundKey);
+
+  // What this slot actually renders. For the bot during the build-up this is a
+  // decoy chosen purely by elapsed time; `choice` is still null at that point.
+  const shown = side === 'bot' && phase === 'revealing' ? decoy : choice;
+
+  const direction = side === 'player' ? -1 : 1;
+  const animation = handAnimation({
+    side,
+    phase,
+    outcome,
+    reducedMotion,
+    direction,
+    ease,
+    motionScale,
+  });
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    // gap-3, not gap-2: the winner scales to 1.1, and a transform does not
+    // affect layout, so the hand grows over its own caption unless the gap
+    // clears the overshoot.
+    <div className="relative flex flex-col items-center gap-3">
       <motion.div
         key={`${roundKey}-${phase}`}
-        initial={reducedMotion ? { opacity: 0 } : false}
-        {...animation}
+        initial={animation.initial}
+        animate={animation.animate}
+        transition={animation.transition}
         style={{
+          width: HAND_SIZE,
+          height: HAND_SIZE,
           borderRadius: 'var(--radius-choice)',
           boxShadow: 'var(--shadow-choice), var(--glow-choice)',
           borderWidth: 'var(--border-width)',
@@ -107,26 +134,152 @@ function Hand({ choice, label, phase, roundKey, won, mirrored, imageSet }: HandP
           borderStyle: 'var(--border-style)',
           willChange: 'transform',
         }}
-        className={`flex h-24 w-24 items-center justify-center overflow-hidden sm:h-28 sm:w-28 ${
-          choice ? HAND_CLASSES[choice] : 'bg-elevated text-ink'
+        className={`flex items-center justify-center overflow-hidden ${
+          shown ? HAND_CLASSES[shown] : 'bg-elevated text-ink'
         }`}
       >
-        {choice ? (
+        {shown ? (
           <MoveArt
-            choice={choice}
+            choice={shown}
             imageSet={imageSet}
             size="full"
-            iconClassName="h-12 w-12 sm:h-14 sm:w-14"
+            // The decoy is scenery, not information: it must not be announced,
+            // or a screen reader would hear three moves that never happened.
+            decorative={side === 'bot' && phase === 'revealing'}
+            iconClassName="h-1/2 w-1/2"
           />
         ) : (
-          // The bot's pick does not exist client-side yet, so there is nothing
-          // here that could reveal it — no image element, no request.
-          <span className="display-type text-3xl font-black" aria-hidden="true">
+          // Reduced motion, or the instant before the first decoy paints.
+          <span className="display-type text-4xl font-black sm:text-6xl" aria-hidden="true">
             ?
           </span>
         )}
       </motion.div>
-      <span className="display-type text-sm font-semibold text-muted">{label}</span>
+
+      {/* `relative` is load-bearing: z-index is ignored on statically
+          positioned elements, so without it the scaled hand paints over this. */}
+      <span className="display-type relative z-20 text-xs font-semibold text-muted sm:text-sm">
+        {label}
+      </span>
     </div>
   );
+}
+
+interface AnimationArgs {
+  side: 'player' | 'bot';
+  phase: Phase;
+  outcome: RoundOutcome | null;
+  reducedMotion: boolean | null;
+  direction: number;
+  /** Cubic-bezier control points; must stay a 4-tuple for Framer Motion. */
+  ease: [number, number, number, number];
+  motionScale: number;
+}
+
+/**
+ * Every value below is a transform or an opacity, so the whole sequence stays
+ * on the compositor: two large photographs are being moved every frame.
+ */
+function handAnimation({
+  side,
+  phase,
+  outcome,
+  reducedMotion,
+  direction,
+  ease,
+  motionScale,
+}: AnimationArgs) {
+  const rest = REST_X * direction;
+
+  if (reducedMotion) {
+    // No approach, no pump, no recoil — just a clean fade into place. The
+    // outcome stays fully readable because it never depended on the motion.
+    return {
+      initial: { opacity: 0, x: `${rest}%` },
+      animate: { opacity: 1, x: `${rest}%` },
+      transition: { duration: 0.25 },
+    };
+  }
+
+  if (phase === 'revealing') {
+    const beatSeconds = (SHAKE_BEAT_MS / 1000) * motionScale;
+    return {
+      initial: { x: `${ENTER_X * direction}%`, y: 0, rotate: 0, scale: 1 },
+      animate: {
+        // The approach IS the build-up: it runs across the same three beats
+        // rather than being staged before them, so nothing is added to the
+        // clock. The hands arrive exactly as "Shoot!" lands.
+        x: `${rest}%`,
+        y: [0, -22, 0],
+        rotate: [0, direction * -7, 0],
+      },
+      transition: {
+        x: { duration: REVEAL_DELAY_MS / 1000, ease: [0.22, 0.61, 0.36, 1] as const },
+        y: { duration: beatSeconds, repeat: SHAKE_BEATS - 1, ease: 'easeInOut' as const },
+        rotate: { duration: beatSeconds, repeat: SHAKE_BEATS - 1, ease: 'easeInOut' as const },
+      },
+    };
+  }
+
+  // Impact, then the outcome read spatially. The winner presses in toward the
+  // loser; the loser gives ground and shrinks. A tie pulls both back the same
+  // distance, so "neither" is legible as its own shape.
+  const won = outcome === (side === 'player' ? 'win' : 'lose');
+  const lost = outcome === (side === 'player' ? 'lose' : 'win');
+
+  const settle =
+    outcome === 'tie' ? rest * 2.4
+    : won ? rest * 0.1
+    : lost ? rest * 2.8
+    : rest;
+
+  const endScale = won ? 1.1 : lost ? 0.88 : 0.95;
+
+  return {
+    // Arrive compressed, then settle: the squash reads as contact rather than
+    // as a bounce, which would make the meeting feel loose.
+    initial: { x: `${rest}%`, y: 0, rotate: 0, scale: 1 },
+    animate: {
+      x: [`${rest}%`, `${rest}%`, `${settle}%`],
+      scale: [1, 0.93, endScale],
+      y: 0,
+      rotate: 0,
+    },
+    transition: {
+      duration: 0.42 * motionScale,
+      times: [0, 0.28, 1],
+      ease,
+    },
+  };
+}
+
+/**
+ * Drives the bot's decoy cycle from elapsed time alone.
+ *
+ * `shuffleMoveAt` is never given the bot's real choice — it cannot be, because
+ * `useGame` has not resolved one yet while this is running. The sequence and
+ * its timing are therefore identical on every round regardless of outcome, and
+ * all three images are already warm from `useThemeImages`, so no move's frame
+ * costs a fetch or a decode that the others don't.
+ */
+function useShuffleMove(active: boolean, roundKey: number): Choice | null {
+  const [move, setMove] = useState<Choice | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      setMove(null);
+      return;
+    }
+
+    const started = performance.now();
+    setMove(shuffleMoveAt(0));
+
+    const id = window.setInterval(() => {
+      setMove(shuffleMoveAt(performance.now() - started));
+    }, SHUFFLE_STEP_MS);
+
+    return () => window.clearInterval(id);
+  }, [active, roundKey]);
+
+  return move;
 }

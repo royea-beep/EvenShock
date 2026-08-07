@@ -121,12 +121,14 @@ export function RoundScreen({
       >
         {/* The standing belongs here most of all: this is the moment the player
             is deciding, and it used to show nothing but the three buttons. */}
-        <MatchStatusBar
-          score={score}
-          roundNumber={roundNumber}
-          format={format}
-          history={history}
-        />
+        <div className="w-full max-w-xl">
+          <MatchStatusBar
+            score={score}
+            roundNumber={roundNumber}
+            format={format}
+            history={history}
+          />
+        </div>
 
         <p className="display-type text-lg font-semibold text-muted">{copy.game.prompt}</p>
         {/* gap-3 on mobile is load-bearing: three 112px buttons plus gap-6 came
@@ -147,12 +149,42 @@ export function RoundScreen({
   }
 
   return (
-    <div className="flex flex-col items-center gap-6 text-center">
-      <MatchStatusBar score={score} roundNumber={roundNumber} format={format} history={history} />
+    <div className="flex flex-col items-center gap-4 text-center">
+      <div className="w-full max-w-xl">
+        <MatchStatusBar score={score} roundNumber={roundNumber} format={format} history={history} />
+      </div>
 
       {/* The hands live here across BOTH revealing and result, so the reveal is
           a snap of the same elements rather than a swap between screens. */}
-      <div className="relative w-full py-4">
+      <div className="relative w-full py-2">
+        {/* The countdown gets its own band ABOVE the hands rather than sitting
+            behind them. Behind was the first attempt and it failed on contact:
+            hands this large cover the middle of the word, so "Scissors..." read
+            as "Sc...o...". Its own band keeps it legible, keeps its backdrop
+            the page surface (which every theme already clears AA against, so no
+            scrim is needed), and still lets it dominate the pump. The height is
+            reserved so nothing shifts when it swaps or disappears. */}
+        <div
+          style={{ height: 'clamp(2.6rem, 10vw, 7.5rem)' }}
+          className="flex w-full items-center justify-center overflow-x-clip"
+        >
+          {(phase === 'revealing' || showShoot) && !reducedMotion && (
+            <motion.p
+              key={`giant-${phase === 'revealing' ? beatIndex : 'shoot'}-${roundNumber}`}
+              aria-hidden="true"
+              initial={{ opacity: 0, scale: 0.88 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.12, ease: 'easeOut' }}
+              style={{ fontSize: 'clamp(1.6rem, 7.6vw, 6.5rem)', lineHeight: 1 }}
+              className="display-type pointer-events-none whitespace-nowrap font-black text-ink select-none"
+            >
+              {phase === 'revealing'
+                ? copy.game.countdown[beatIndex]
+                : copy.game.countdown[SHAKE_BEATS]}
+            </motion.p>
+          )}
+        </div>
+
         {phase === 'result' && roundResult && !reducedMotion && (
           <motion.div
             key={`flash-${roundNumber}`}
@@ -175,27 +207,21 @@ export function RoundScreen({
         />
       </div>
 
-      <div className="min-h-[4.5rem]">
+      <div className="min-h-[4.5rem] w-full">
+        {/* Reduced motion keeps a plain text beat, since the giant countdown
+            behind the hands is suppressed along with the rest of the motion. */}
         {phase === 'revealing' ? (
-            <motion.p
-              key={`beat-${beatIndex}`}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.1 }}
-              className="display-type text-2xl font-extrabold text-ink"
-            >
-              {copy.game.countdown[beatIndex]}
-            </motion.p>
+            reducedMotion ? (
+              <p className="display-type text-2xl font-extrabold text-ink">
+                {copy.game.countdown[beatIndex]}
+              </p>
+            ) : null
           ) : showShoot ? (
-            <motion.p
-              key="shoot"
-              initial={{ opacity: 0, scale: reducedMotion ? 1 : 1.4 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.14, ease: 'easeOut' }}
-              className="display-type text-3xl font-black text-ink"
-            >
-              {copy.game.countdown[SHAKE_BEATS]}
-            </motion.p>
+            reducedMotion ? (
+              <p className="display-type text-3xl font-black text-ink">
+                {copy.game.countdown[SHAKE_BEATS]}
+              </p>
+            ) : null
           ) : (
             <motion.div
               key="outcome"
