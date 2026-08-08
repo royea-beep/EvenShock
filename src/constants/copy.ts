@@ -71,6 +71,10 @@ export const copy = {
     mute: 'Mute sound effects',
     unmute: 'Unmute sound effects',
   },
+  pace: {
+    enable: 'Turn on fast rounds',
+    disable: 'Turn off fast rounds',
+  },
   theme: {
     label: 'Pick a look',
     selectedMark: '✓',

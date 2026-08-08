@@ -2,18 +2,23 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { Choice, MatchFormat, MatchStatus, RoundOutcome, Score } from '../../types/game';
 import { copy } from '../../constants/copy';
-import { ADVANCE_FADE_MS, SHAKE_BEATS, SHAKE_BEAT_MS } from '../../constants/gameConfig';
+import {
+  ADVANCE_FADE_MS,
+  IMPACT_HOLD_MS,
+  SHAKE_BEATS,
+  SHAKE_BEAT_MS,
+  type ImpactLevel,
+} from '../../constants/gameConfig';
+import type { ThemeId } from '../../constants/themes';
 import { ChoiceButton } from '../ChoiceButton';
 import { HandsFaceOff } from '../HandsFaceOff';
+import { ImpactBurst } from '../ImpactBurst';
 import { MatchStatusBar, OUTCOME_MARK } from '../MatchStatusBar';
 import { play } from '../../utils/sound';
 import type { RoundEntry } from '../../utils/roundHistory';
 import type { ImageSet } from '../../assets/themes';
 
 const CHOICES: Choice[] = ['rock', 'paper', 'scissors'];
-
-/** How long "Shoot!" holds on the snap before the outcome takes over. */
-const SHOOT_HOLD_MS = 180;
 
 const FLASH_CLASSES: Record<RoundOutcome, string> = {
   win: 'bg-win',
@@ -43,6 +48,10 @@ interface RoundScreenProps {
   format: MatchFormat;
   history: RoundEntry[];
   imageSet: ImageSet | null;
+  theme: ThemeId;
+  /** True when this round ends the match — the one that earns the full payoff. */
+  deciding: boolean;
+  fast: boolean;
   onPick: (choice: Choice) => void;
   onContinue: () => void;
 }
@@ -57,10 +66,22 @@ export function RoundScreen({
   format,
   history,
   imageSet,
+  theme,
+  deciding,
+  fast,
   onPick,
   onContinue,
 }: RoundScreenProps) {
   const reducedMotion = useReducedMotion();
+
+  // How much production this round earns. Fast mode wins over `deciding`: a
+  // player who asked for speed has asked for it on every round.
+  const level: ImpactLevel = fast ? 'fast' : deciding ? 'deciding' : 'routine';
+  const holdMs = IMPACT_HOLD_MS[level];
+  // Flash, screen shake, slow motion and particles are the four most likely to
+  // grate by the twentieth view, so they are the four gated behind the round
+  // that ends the match. Reduced motion removes them entirely.
+  const bigPayoff = level === 'deciding' && !reducedMotion;
 
   const phase: 'picking' | 'revealing' | 'result' = !playerChoice
     ? 'picking'
@@ -84,9 +105,9 @@ export function RoundScreen({
       return;
     }
     setShowShoot(true);
-    const id = window.setTimeout(() => setShowShoot(false), SHOOT_HOLD_MS);
+    const id = window.setTimeout(() => setShowShoot(false), holdMs);
     return () => window.clearTimeout(id);
-  }, [phase, roundNumber]);
+  }, [phase, roundNumber, holdMs]);
 
   // The advance button fades in and stays inert for a beat after the outcome.
   // Both landed in the same frame before, so a quick second tap could dismiss
@@ -97,9 +118,16 @@ export function RoundScreen({
       setAdvanceReady(false);
       return;
     }
-    const id = window.setTimeout(() => setAdvanceReady(true), SHOOT_HOLD_MS + ADVANCE_FADE_MS);
+    const id = window.setTimeout(() => setAdvanceReady(true), holdMs + ADVANCE_FADE_MS);
     return () => window.clearTimeout(id);
-  }, [phase, roundNumber]);
+  }, [phase, roundNumber, holdMs]);
+
+  // One burst per deciding round, fired by bumping the key.
+  const [burstKey, setBurstKey] = useState<number | null>(null);
+  useEffect(() => {
+    if (phase !== 'result' || !bigPayoff) return;
+    setBurstKey(roundNumber);
+  }, [phase, bigPayoff, roundNumber]);
 
   // Impact + outcome sounds, once per reveal.
   const soundedRound = useRef<number | null>(null);
@@ -197,6 +225,26 @@ export function RoundScreen({
           />
         )}
 
+        {/* The white hit. Confined to the stage rather than the viewport, and
+            below the outcome line, so it never composites over text the player
+            has to read — which is also what keeps AA intact during the impact.
+            One rise and one fall, no repeat: a strobe is a health hazard, not a
+            stronger flash. Short and modest rather than long and bright — at
+            0.22s it measured visible for 10 frames, which is a wash, not a hit;
+            100ms puts it at 5-6 frames with the peak on about the second. Rare
+            was never meant to license harsh. */}
+        {phase === 'result' && bigPayoff && (
+          <motion.div
+            key={`hit-${roundNumber}`}
+            aria-hidden="true"
+            style={{ borderRadius: 'var(--radius-themed-md)', backgroundColor: '#ffffff' }}
+            className="pointer-events-none absolute inset-0 z-30"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 0.5, 0] }}
+            transition={{ duration: 0.1, times: [0, 0.3, 1], ease: 'easeOut' }}
+          />
+        )}
+
         <HandsFaceOff
           playerChoice={playerChoice as Choice}
           botChoice={botChoice}
@@ -204,7 +252,28 @@ export function RoundScreen({
           roundResult={roundResult}
           roundKey={roundNumber}
           imageSet={imageSet}
+          level={level}
         />
+
+        {/* Shockwave + particles sit over the stage, never over the outcome
+            line below it, so nothing the player has to read is composited
+            against a moving highlight. */}
+        {phase === 'result' && bigPayoff && roundResult !== 'tie' && (
+          <motion.span
+            key={`ring-${roundNumber}`}
+            aria-hidden="true"
+            initial={{ opacity: 0.5, scale: 0.15 }}
+            animate={{ opacity: 0, scale: 1 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            style={{ borderColor: 'var(--text-primary)' }}
+            className="pointer-events-none absolute left-1/2 top-1/2 z-20 h-[42vw] w-[42vw] max-h-96 max-w-96 -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
+          />
+        )}
+
+        {/* Mounted for the whole reveal, not just the result: the canvas has
+            to be allocated and scaled BEFORE the snap, or that work lands on
+            the impact frame. It draws nothing until fireKey is set. */}
+        {bigPayoff && <ImpactBurst fireKey={phase === 'result' ? burstKey : null} theme={theme} />}
       </div>
 
       <div className="min-h-[4.5rem] w-full">

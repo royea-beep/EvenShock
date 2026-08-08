@@ -3,8 +3,8 @@ import { motion, useReducedMotion } from 'framer-motion';
 import type { Choice, RoundOutcome } from '../types/game';
 import type { ImageSet } from '../assets/themes';
 import { copy } from '../constants/copy';
-import { SHAKE_BEATS, SHAKE_BEAT_MS, REVEAL_DELAY_MS } from '../constants/gameConfig';
-import { SHUFFLE_STEP_MS, shuffleMoveAt } from '../utils/shuffle';
+import { SHAKE_BEATS, SHAKE_BEAT_MS, REVEAL_DELAY_MS, type ImpactLevel } from '../constants/gameConfig';
+import { shuffleStateAt, type ShuffleState } from '../utils/shuffle';
 import { readThemeMotion } from '../utils/themeTokens';
 import { MoveArt } from './MoveArt';
 
@@ -14,30 +14,25 @@ const HAND_CLASSES: Record<Choice, string> = {
   scissors: 'bg-scissors text-scissors-ink',
 };
 
-/**
- * Hand size, viewport-relative so the reveal fills whatever screen it is on.
- * The upper bound keeps a 1900px desktop from turning them into billboards;
- * the 40vw middle term is set by the narrowest phone we support — two hands
- * plus the VS gutter has to fit 320px without the approach ever pushing a
- * scrollbar.
- */
 const HAND_SIZE = 'clamp(6rem, 40vw, 24rem)';
 
 /** Resting offsets, as a share of each hand's own width. */
 const REST_X = 7;
 /** Where each hand starts: comfortably past its own edge of the screen. */
 const ENTER_X = 190;
+/** Extra convergence during the build-up — the hands close the distance. */
+const DRIFT_X = 3;
 
 type Phase = 'revealing' | 'result';
 
 interface HandsFaceOffProps {
   playerChoice: Choice;
-  /** null while the build-up runs — the bot's pick does not exist yet. */
   botChoice: Choice | null;
   phase: Phase;
   roundResult: RoundOutcome | null;
   roundKey: number;
   imageSet: ImageSet | null;
+  level: ImpactLevel;
 }
 
 export function HandsFaceOff({
@@ -47,11 +42,9 @@ export function HandsFaceOff({
   roundResult,
   roundKey,
   imageSet,
+  level,
 }: HandsFaceOffProps) {
   return (
-    // overflow-x is clipped HERE and nowhere wider, so the hands can start off
-    // screen without ever creating a scrollbar — and a genuine overflow bug
-    // anywhere else on the page still shows up in document.scrollWidth.
     <div className="relative z-10 flex w-full items-center justify-center overflow-x-clip py-2">
       <Hand
         side="player"
@@ -61,6 +54,7 @@ export function HandsFaceOff({
         roundKey={roundKey}
         outcome={roundResult}
         imageSet={imageSet}
+        level={level}
       />
 
       <span className="display-type z-10 px-1 text-lg font-black text-muted sm:px-3 sm:text-2xl">
@@ -75,6 +69,7 @@ export function HandsFaceOff({
         roundKey={roundKey}
         outcome={roundResult}
         imageSet={imageSet}
+        level={level}
       />
     </div>
   );
@@ -88,36 +83,23 @@ interface HandProps {
   roundKey: number;
   outcome: RoundOutcome | null;
   imageSet: ImageSet | null;
+  level: ImpactLevel;
 }
 
-function Hand({ side, choice, label, phase, roundKey, outcome, imageSet }: HandProps) {
+function Hand({ side, choice, label, phase, roundKey, outcome, imageSet, level }: HandProps) {
   const reducedMotion = useReducedMotion();
   const { ease, scale: motionScale } = readThemeMotion();
 
-  // The decoy cycle. Only the bot shuffles, only during the build-up, and never
-  // under reduced motion — where the whole point is that nothing churns.
   const shuffling = side === 'bot' && phase === 'revealing' && !reducedMotion;
-  const decoy = useShuffleMove(shuffling, roundKey);
+  const shuffle = useShuffle(shuffling, roundKey);
 
-  // What this slot actually renders. For the bot during the build-up this is a
-  // decoy chosen purely by elapsed time; `choice` is still null at that point.
-  const shown = side === 'bot' && phase === 'revealing' ? decoy : choice;
+  const shown = side === 'bot' && phase === 'revealing' ? (shuffle?.move ?? null) : choice;
+  const unsettled = shuffling && shuffle !== null;
 
   const direction = side === 'player' ? -1 : 1;
-  const animation = handAnimation({
-    side,
-    phase,
-    outcome,
-    reducedMotion,
-    direction,
-    ease,
-    motionScale,
-  });
+  const animation = handAnimation({ side, phase, outcome, reducedMotion, direction, ease, motionScale, level });
 
   return (
-    // gap-3, not gap-2: the winner scales to 1.1, and a transform does not
-    // affect layout, so the hand grows over its own caption unless the gap
-    // clears the overshoot.
     <div className="relative flex flex-col items-center gap-3">
       <motion.div
         key={`${roundKey}-${phase}`}
@@ -134,30 +116,53 @@ function Hand({ side, choice, label, phase, roundKey, outcome, imageSet }: HandP
           borderStyle: 'var(--border-style)',
           willChange: 'transform',
         }}
-        className={`flex items-center justify-center overflow-hidden ${
+        className={`relative flex items-center justify-center overflow-hidden ${
           shown ? HAND_CLASSES[shown] : 'bg-elevated text-ink'
         }`}
       >
         {shown ? (
-          <MoveArt
-            choice={shown}
-            imageSet={imageSet}
-            size="full"
-            // The decoy is scenery, not information: it must not be announced,
-            // or a screen reader would hear three moves that never happened.
-            decorative={side === 'bot' && phase === 'revealing'}
-            iconClassName="h-1/2 w-1/2"
-          />
+          <>
+            <div
+              // The blur is the "still cycling" signal and is never 0 during the
+              // build-up. A settled hand is crisp; a shuffling one never is, so
+              // the near-miss cannot be mistaken for the answer having landed.
+              style={{
+                filter: unsettled ? `blur(${shuffle.blurPx}px)` : undefined,
+                opacity: unsettled ? 0.88 : 1,
+                willChange: unsettled ? 'filter' : undefined,
+              }}
+              className="h-full w-full"
+            >
+              <MoveArt
+                choice={shown}
+                imageSet={imageSet}
+                size="full"
+                decorative={side === 'bot' && phase === 'revealing'}
+                iconClassName="h-1/2 w-1/2"
+              />
+            </div>
+
+            {/* A standing "unknown" chip for the whole build-up. Together with
+                the blur it makes "still shuffling" and "settled" two visibly
+                different states, so a player reading the near-miss as final
+                would have to ignore both. */}
+            {unsettled && (
+              <span
+                aria-hidden="true"
+                style={{ borderRadius: 'var(--radius-sm)' }}
+                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center bg-elevated/90 text-base font-black text-ink"
+              >
+                ?
+              </span>
+            )}
+          </>
         ) : (
-          // Reduced motion, or the instant before the first decoy paints.
           <span className="display-type text-4xl font-black sm:text-6xl" aria-hidden="true">
             ?
           </span>
         )}
       </motion.div>
 
-      {/* `relative` is load-bearing: z-index is ignored on statically
-          positioned elements, so without it the scaled hand paints over this. */}
       <span className="display-type relative z-20 text-xs font-semibold text-muted sm:text-sm">
         {label}
       </span>
@@ -171,9 +176,9 @@ interface AnimationArgs {
   outcome: RoundOutcome | null;
   reducedMotion: boolean | null;
   direction: number;
-  /** Cubic-bezier control points; must stay a 4-tuple for Framer Motion. */
   ease: [number, number, number, number];
   motionScale: number;
+  level: ImpactLevel;
 }
 
 /**
@@ -188,12 +193,11 @@ function handAnimation({
   direction,
   ease,
   motionScale,
+  level,
 }: AnimationArgs) {
   const rest = REST_X * direction;
 
   if (reducedMotion) {
-    // No approach, no pump, no recoil — just a clean fade into place. The
-    // outcome stays fully readable because it never depended on the motion.
     return {
       initial: { opacity: 0, x: `${rest}%` },
       animate: { opacity: 1, x: `${rest}%` },
@@ -206,48 +210,59 @@ function handAnimation({
     return {
       initial: { x: `${ENTER_X * direction}%`, y: 0, rotate: 0, scale: 1 },
       animate: {
-        // The approach IS the build-up: it runs across the same three beats
-        // rather than being staged before them, so nothing is added to the
-        // clock. The hands arrive exactly as "Shoot!" lands.
-        x: `${rest}%`,
+        // The approach runs across the same beats as the pump, so it costs
+        // nothing on the clock, and closes an extra DRIFT_X at the end — the
+        // hands are still moving toward each other when the snap lands.
+        x: [`${ENTER_X * direction}%`, `${rest}%`, `${(REST_X - DRIFT_X) * direction}%`],
         y: [0, -22, 0],
         rotate: [0, direction * -7, 0],
       },
       transition: {
-        x: { duration: REVEAL_DELAY_MS / 1000, ease: [0.22, 0.61, 0.36, 1] as const },
+        x: {
+          duration: REVEAL_DELAY_MS / 1000,
+          times: [0, 0.72, 1],
+          ease: [0.22, 0.61, 0.36, 1] as const,
+        },
         y: { duration: beatSeconds, repeat: SHAKE_BEATS - 1, ease: 'easeInOut' as const },
         rotate: { duration: beatSeconds, repeat: SHAKE_BEATS - 1, ease: 'easeInOut' as const },
       },
     };
   }
 
-  // Impact, then the outcome read spatially. The winner presses in toward the
-  // loser; the loser gives ground and shrinks. A tie pulls both back the same
-  // distance, so "neither" is legible as its own shape.
   const won = outcome === (side === 'player' ? 'win' : 'lose');
   const lost = outcome === (side === 'player' ? 'lose' : 'win');
+  const contact = (REST_X - DRIFT_X) * direction;
 
+  // A tie is neither: both bounce off the same distance, so "no winner" has its
+  // own shape rather than being a weak version of one.
   const settle =
     outcome === 'tie' ? rest * 2.4
-    : won ? rest * 0.1
-    : lost ? rest * 2.8
+    : won ? contact * 0.05
+    : lost ? contact * 3.4
     : rest;
 
-  const endScale = won ? 1.1 : lost ? 0.88 : 0.95;
+  const endScale = won ? 1.12 : lost ? 0.84 : 0.95;
+  // The loser is knocked off-axis; the winner stays square to the camera.
+  const endRotate = lost ? direction * 9 : 0;
+  const endOpacity = lost ? 0.72 : 1;
+
+  // Slow motion lives here: the same impact, played longer. Deciding rounds
+  // stretch it; fast mode compresses it.
+  const impactSeconds =
+    (level === 'deciding' ? 0.62 : level === 'fast' ? 0.26 : 0.42) * motionScale;
 
   return {
-    // Arrive compressed, then settle: the squash reads as contact rather than
-    // as a bounce, which would make the meeting feel loose.
-    initial: { x: `${rest}%`, y: 0, rotate: 0, scale: 1 },
+    initial: { x: `${contact}%`, y: 0, rotate: 0, scale: 1, opacity: 1 },
     animate: {
-      x: [`${rest}%`, `${rest}%`, `${settle}%`],
-      scale: [1, 0.93, endScale],
+      x: [`${contact}%`, `${contact}%`, `${settle}%`],
+      scale: [1, 0.9, endScale],
+      rotate: [0, 0, endRotate],
+      opacity: [1, 1, endOpacity],
       y: 0,
-      rotate: 0,
     },
     transition: {
-      duration: 0.42 * motionScale,
-      times: [0, 0.28, 1],
+      duration: impactSeconds,
+      times: [0, level === 'deciding' ? 0.34 : 0.28, 1],
       ease,
     },
   };
@@ -256,30 +271,43 @@ function handAnimation({
 /**
  * Drives the bot's decoy cycle from elapsed time alone.
  *
- * `shuffleMoveAt` is never given the bot's real choice — it cannot be, because
- * `useGame` has not resolved one yet while this is running. The sequence and
- * its timing are therefore identical on every round regardless of outcome, and
- * all three images are already warm from `useThemeImages`, so no move's frame
- * costs a fetch or a decode that the others don't.
+ * `shuffleStateAt` is never given the bot's real choice — it cannot be, because
+ * `useGame` has not resolved one yet while this is running. The cycle, its
+ * deceleration and its blur are therefore identical on every round regardless
+ * of outcome, and all three images are already warm from `useThemeImages`, so
+ * no move's frame costs a fetch or a decode that the others don't.
+ *
+ * Sampled on every animation frame rather than on an interval: the steps are no
+ * longer evenly spaced, so a fixed interval would quantise the deceleration
+ * back out of existence.
  */
-function useShuffleMove(active: boolean, roundKey: number): Choice | null {
-  const [move, setMove] = useState<Choice | null>(null);
+function useShuffle(active: boolean, roundKey: number): ShuffleState | null {
+  const [state, setState] = useState<ShuffleState | null>(null);
 
   useEffect(() => {
     if (!active) {
-      setMove(null);
+      setState(null);
       return;
     }
 
     const started = performance.now();
-    setMove(shuffleMoveAt(0));
+    let raf = 0;
+    let lastStepMove: Choice | null = null;
 
-    const id = window.setInterval(() => {
-      setMove(shuffleMoveAt(performance.now() - started));
-    }, SHUFFLE_STEP_MS);
+    const frame = (now: number) => {
+      const next = shuffleStateAt(now - started);
+      // Re-render only when the move changes; the blur rides the same update,
+      // which keeps this to ~7 renders across the whole build-up.
+      if (next.move !== lastStepMove) {
+        lastStepMove = next.move;
+        setState(next);
+      }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
 
-    return () => window.clearInterval(id);
+    return () => cancelAnimationFrame(raf);
   }, [active, roundKey]);
 
-  return move;
+  return state;
 }

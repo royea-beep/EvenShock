@@ -5,18 +5,21 @@ import { useTheme } from './hooks/useTheme';
 import { useThemeImages } from './hooks/useThemeImages';
 import { useRoundHistory } from './hooks/useRoundHistory';
 import { useMuted } from './hooks/useMuted';
+import { useFastMode } from './hooks/useFastMode';
 import { getScreen } from './utils/getScreen';
 import { unlockAudio } from './utils/sound';
 import { HomeScreen } from './components/screens/HomeScreen';
 import { RoundScreen } from './components/screens/RoundScreen';
 import { MatchEndScreen } from './components/screens/MatchEndScreen';
 import { MuteToggle } from './components/MuteToggle';
+import { FastModeToggle } from './components/FastModeToggle';
 import { LeaveMatchControl } from './components/LeaveMatchControl';
 
 function App() {
   const game = useGame();
   const screen = getScreen(game);
   const { muted, toggleMuted } = useMuted();
+  const { fast, toggleFast } = useFastMode();
   const { theme, setTheme } = useTheme();
   const imageSet = useThemeImages(theme);
   // Derived in the UI layer, deliberately: useGame stays the multiplayer seam.
@@ -26,16 +29,41 @@ function App() {
   const shakeControls = useAnimationControls();
   const shakenRound = useRef<number | null>(null);
 
-  // A losing round gives the page a small, brief knock — "ouch", not a glitch.
+  // The round that ends the match is the only one that earns the full payoff.
+  // matchStatus flips to 'complete' in the same commit the outcome arrives, so
+  // this is known exactly when the impact plays.
+  const deciding = game.matchStatus === 'complete';
+
+  // The impact knock, and a small push-in with it.
+  //
+  // Both live on the inner container, never on <main>: main spans the whole
+  // viewport, so translating it pushed 6px of horizontal scroll on every
+  // knocked round — invisible at rest and only caught by sampling the reveal
+  // frame by frame. This container sits inside main's 24px padding.
+  //
+  // The shake is gated to deciding rounds and suppressed under reduced motion.
+  // It and the white flash were the two elements most likely to grate by the
+  // twentieth view, so they fire roughly once a match rather than once a round.
   useEffect(() => {
-    if (game.roundResult !== 'lose' || reducedMotion) return;
+    if (!game.roundResult || reducedMotion || fast) return;
     if (shakenRound.current === game.roundNumber) return;
     shakenRound.current = game.roundNumber;
-    void shakeControls.start({
-      x: [0, -6, 6, -4, 4, 0],
-      transition: { duration: 0.2, ease: 'easeInOut' },
-    });
-  }, [game.roundResult, game.roundNumber, reducedMotion, shakeControls]);
+
+    if (deciding && game.roundResult !== 'tie') {
+      void shakeControls.start({
+        x: [0, -10, 9, -6, 4, 0],
+        scale: [1, 1.02, 1.005, 1],
+        transition: { duration: 0.32, ease: 'easeInOut' },
+      });
+      return;
+    }
+    if (game.roundResult === 'lose') {
+      void shakeControls.start({
+        x: [0, -4, 4, -2, 0],
+        transition: { duration: 0.18, ease: 'easeInOut' },
+      });
+    }
+  }, [game.roundResult, game.roundNumber, reducedMotion, fast, deciding, shakeControls]);
 
   const handleStart = () => {
     unlockAudio(); // warm the audio context from a real user gesture
@@ -45,6 +73,7 @@ function App() {
   return (
     <>
       <MuteToggle muted={muted} onToggle={toggleMuted} />
+      <FastModeToggle fast={fast} onToggle={toggleFast} />
 
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
           which getScreen maps to 'home', and deliberately keeps `format`. */}
@@ -97,6 +126,9 @@ function App() {
                 format={game.format}
                 history={history}
                 imageSet={imageSet}
+                theme={theme}
+                deciding={deciding}
+                fast={fast}
                 onPick={game.pickChoice}
                 onContinue={game.continueFromResult}
               />
