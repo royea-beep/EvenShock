@@ -9,16 +9,20 @@
  * and 4 from `sm` up; anything else leaves a short row centred under a full
  * one, which reads as a bug. `themes.test.ts` asserts it.
  *
+ * The four are deliberately spread rather than four variations on a mood: two
+ * light grounds and two dark, two photoreal and two stylised. That spread is
+ * what keeps them distinguishable at tile size.
+ *
  * `imageSlug` may be null for a theme with no art set, which renders the
- * built-in SVG icons. No theme ships that way today: the SVG path is the
- * image-load FALLBACK, and it is covered by tests — including the "image
- * failed to load" branch that a shipped SVG theme never exercised — rather
- * than by spending a picker slot on it.
+ * built-in SVG icons. No theme ships that way: the SVG path is the image-load
+ * FALLBACK, and it is covered by tests — including the "image failed to load"
+ * branch that a shipped SVG theme never exercised — rather than by spending a
+ * picker slot on it.
  */
 export const THEMES = [
   {
     id: 'studio',
-    name: 'Studio',
+    name: 'Studio Photography',
     blurb: 'Real hands, white sweep, editorial lighting',
     imageSlug: 'set01_studio_hands',
   },
@@ -29,64 +33,16 @@ export const THEMES = [
     imageSlug: 'set03_marble',
   },
   {
-    id: 'chrome',
-    name: 'Liquid Chrome',
-    blurb: 'Mirror-polished metal in the dark',
-    imageSlug: 'set04_chrome',
-  },
-  {
-    id: 'xray',
-    name: 'X-Ray',
-    blurb: 'Anatomical scan, phosphor glow',
-    imageSlug: 'set05_xray',
-  },
-  {
-    id: 'neon',
-    name: 'Neon Night',
-    blurb: 'Rim-lit in magenta and cyan',
-    imageSlug: 'set11_neon_night',
-  },
-  {
-    id: 'molten',
-    name: 'Molten Lava',
-    blurb: 'Cracked crust over glowing heat',
-    imageSlug: 'set12_molten',
-  },
-  {
-    id: 'frost',
-    name: 'Frozen Ice',
-    blurb: 'Carved from ice, lit blue',
-    imageSlug: 'set13_frost',
-  },
-  {
-    id: 'mecha',
-    name: 'Mecha Robotic',
-    blurb: 'Armoured plate and cyan trim',
-    imageSlug: 'set14_mecha',
-  },
-  {
-    id: 'gold',
-    name: 'Solid Gold',
-    blurb: 'Cast in polished gold',
-    imageSlug: 'set15_gold',
-  },
-  {
-    id: 'powder',
-    name: 'Powder Burst',
-    blurb: 'Caught in a cloud of colour',
-    imageSlug: 'set16_powder',
-  },
-  {
     id: 'ink',
     name: 'Ink Brush',
     blurb: 'Brushed in ink on warm paper',
     imageSlug: 'set17_ink',
   },
   {
-    id: 'glass',
-    name: 'Clear Glass',
-    blurb: 'Moulded glass, refracting teal',
-    imageSlug: 'set18_glass',
+    id: 'molten',
+    name: 'Molten Lava',
+    blurb: 'Cracked crust over glowing heat',
+    imageSlug: 'set12_molten',
   },
 ] as const;
 
