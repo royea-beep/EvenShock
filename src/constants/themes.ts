@@ -44,6 +44,30 @@ export const THEMES = [
     blurb: 'Cracked crust over glowing heat',
     imageSlug: 'set12_molten',
   },
+  {
+    id: 'frost',
+    name: 'Frozen Ice',
+    blurb: 'Translucent ice against midnight blue',
+    imageSlug: 'set13_frost',
+  },
+  {
+    id: 'highroller',
+    name: 'High Roller',
+    blurb: 'Gold-rimmed hands against velvet red',
+    imageSlug: 'set19_highroller',
+  },
+  {
+    id: 'jade',
+    name: 'Jade Porcelain',
+    blurb: 'Pale celadon against a deep jade ground',
+    imageSlug: 'set23_jade',
+  },
+  {
+    id: 'origami',
+    name: 'Coral Origami',
+    blurb: 'Folded coral paper against soft lilac',
+    imageSlug: 'set24_origami',
+  },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]['id'];

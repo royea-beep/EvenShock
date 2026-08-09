@@ -145,3 +145,6 @@ vite.config.ts.timestamp-*
 # Raw art inputs for scripts/build-theme-assets.mjs — the committed
 # deliverable is the converted WebP in src/assets/themes/.
 assets-src/
+
+# Screenshots written by scripts/shot-picker.mjs while auditing tiles.
+picker-shots/

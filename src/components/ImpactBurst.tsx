@@ -73,6 +73,53 @@ const PROFILES: Record<ThemeId, Profile> = {
     lift: 0.3,
     life: 460,
   },
+  highroller: {
+    // Gold sparkle rain like the sparkle field behind the curtain in the art.
+    count: 22,
+    colours: ['#e3b96c', '#b8813a', '#f4d896', '#d9754a'],
+    speed: [90, 260],
+    size: [1.2, 2.8],
+    gravity: 180,
+    drag: 0.87,
+    lift: 0.35,
+    life: 580,
+  },
+  frost: {
+    // Ice shards that fall + a scatter of cyan glints. Cold palette matches
+    // the artwork so the burst reads as chipped ice, not sparks.
+    count: 22,
+    colours: ['#7ec1de', '#2e6a8c', '#e6f1f8', '#59a6cc'],
+    speed: [100, 300],
+    size: [1.4, 3.4],
+    gravity: 500,
+    drag: 0.85,
+    lift: 0.12,
+    life: 540,
+  },
+  jade: {
+    // Porcelain chips: cool celadon greens falling like fragments off a
+    // dropped figurine. Quiet — the theme is stillness, not celebration.
+    count: 16,
+    colours: ['#b3d1c3', '#7ab097', '#edf2ee', '#3c6256'],
+    speed: [80, 240],
+    size: [1.4, 3.6],
+    gravity: 540,
+    drag: 0.86,
+    lift: 0.15,
+    life: 500,
+  },
+  origami: {
+    // Coral + lilac paper triangles fluttering as they fall. Slow drift on
+    // low gravity + high drag reads as paper, not stone.
+    count: 20,
+    colours: ['#d55c40', '#f4b5a0', '#a78ac9', '#d5c7de'],
+    speed: [90, 240],
+    size: [1.6, 3.8],
+    gravity: 260,
+    drag: 0.9,
+    lift: 0.25,
+    life: 620,
+  },
 };
 
 interface ImpactBurstProps {

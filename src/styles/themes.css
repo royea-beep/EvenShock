@@ -278,3 +278,236 @@
   --audio-base-freq: 300;
   --audio-detune: -14;
 }
+
+/* --------------------------------------------------------------------------
+   5. Frozen Ice — set13_frost
+   sampled: midnight shadow #010817 · deep ground #061f3a · ice rim #478cb0
+   · ice cyan peak #159ac7
+   Translucent ice hand against midnight blue. Cold to the touch and cold
+   in the palette — the only cool-blue set in the batch, and dark enough to
+   contrast the mid-tone jade and origami without repeating molten's black.
+   -------------------------------------------------------------------------- */
+[data-theme='frost'] {
+  --surface-page: #071224;
+  --surface-page-image: radial-gradient(ellipse at 50% 40%, rgba(71, 140, 176, 0.18), transparent 60%);
+  --surface-card: #0e1c32;
+  --surface-elevated: #17263f;
+
+  --text-primary: #e6f1f8;
+  --text-muted: #8fa9bd;
+  --text-inverse: #071224;
+
+  /* --choice-rock started at #3b7fa4 and failed AA on its pale ink at 4.08:1.
+     Deepened one step to clear the 4.5 floor — the pale ink is load-bearing
+     because reading dark ink on this blue looks murky at button size. */
+  --choice-rock: #2e6a8c;
+  --choice-rock-ink: #f0f7fc;
+  --choice-paper: #7ec1de;
+  --choice-paper-ink: #071224;
+  --choice-scissors: #59a6cc;
+  --choice-scissors-ink: #071224;
+
+  --outcome-win: #7ad4a0;
+  --outcome-lose: #ff9a82;
+  --outcome-tie: #8fa9bd;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-choice: 0.875rem;
+  --border-width: 1px;
+  --border-color: #1e3252;
+  --border-style: solid;
+
+  --font-display: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: none;
+  --display-tracking: 0.02em;
+
+  --shadow-card: 0 0 0 1px #1e3252, 0 14px 34px rgba(0, 0, 0, 0.5);
+  --shadow-choice: 0 0 24px rgba(21, 154, 199, 0.32);
+  --glow-choice: 0 0 22px rgba(126, 193, 222, 0.36);
+
+  --motion-ease: 0.2, 0.85, 0.35, 1;
+  --motion-scale: 0.94;
+
+  --audio-wave: triangle;
+  --audio-base-freq: 720;
+  --audio-detune: 6;
+}
+
+/* --------------------------------------------------------------------------
+   6. High Roller — set19_highroller
+   sampled: velvet shadow #250506 · velvet highlight #6e2a16 · skin midtone
+   #785544 · gold rim #e9ad52
+   Warm skin + deep-wine velvet curtain + gold rim glow. A stage set: page
+   glow rises from the bottom the way the sparkle field does in the artwork.
+
+   The scissors accent moved from orange (#d9754a) to a wine red (#d94a5c)
+   because the original overlapped Molten Lava's rock (#e8763a) in token
+   signature dE — a chroma fix that also fits the velvet identity better
+   than an orange fleck did. Surface-page nudged from #1a0508 toward #22060c
+   for the same reason: pull the ground a step further into wine and away
+   from molten's warm-black.
+   -------------------------------------------------------------------------- */
+[data-theme='highroller'] {
+  --surface-page: #2a0718;
+  --surface-page-image: radial-gradient(ellipse at 50% 78%, rgba(233, 173, 82, 0.17), transparent 60%);
+  --surface-card: #380c22;
+  --surface-elevated: #4c162e;
+
+  --text-primary: #f7e8d4;
+  --text-muted: #d1a891;
+  --text-inverse: #1a0508;
+
+  --choice-rock: #b8813a;
+  --choice-rock-ink: #1a0508;
+  /* Paper shifted from #e3b96c toward a paler champagne to widen the token
+     distance from Molten's warm paper (#f0a860) and pull the pair over the
+     dE 12 floor. Champagne also reads more "roulette chip" than "flame". */
+  --choice-paper: #edd7a8;
+  --choice-paper-ink: #1a0508;
+  --choice-scissors: #d94a5c;
+  --choice-scissors-ink: #1a0508;
+
+  --outcome-win: #7cd097;
+  --outcome-lose: #ff8f7a;
+  --outcome-tie: #d1a891;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.75rem;
+  --radius-choice: 1rem;
+  --border-width: 1px;
+  --border-color: #4a1a20;
+  --border-style: solid;
+
+  --font-display: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-body: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: uppercase;
+  --display-tracking: 0.14em;
+
+  --shadow-card: 0 0 0 1px #4a1a20, 0 14px 32px rgba(0, 0, 0, 0.55);
+  --shadow-choice: 0 12px 30px rgba(0, 0, 0, 0.55);
+  --glow-choice: 0 0 22px rgba(233, 173, 82, 0.34);
+
+  --motion-ease: 0.34, 1.2, 0.4, 1;
+  --motion-scale: 1.1;
+
+  --audio-wave: triangle;
+  --audio-base-freq: 440;
+  --audio-detune: 8;
+}
+
+/* --------------------------------------------------------------------------
+   7. Jade Porcelain — set23_jade
+   sampled: jade ground #3c6256 · deep jade #315045 · pale celadon #97a299
+   Matte porcelain hand against saturated jade. Chosen expressly for its
+   MID-TONE GROUND: at tile size the four dark themes with black grounds
+   all downsampled toward the same "dark tile with a glow" — mid-tone
+   grounds are the one region of colour space the working set didn't
+   already occupy, so jade and origami sit visibly apart from everything.
+   The identity is museum-object stillness — serif type, small radii,
+   nothing glowing.
+   -------------------------------------------------------------------------- */
+[data-theme='jade'] {
+  --surface-page: #2d4a3f;
+  --surface-page-image: radial-gradient(ellipse at 50% 20%, rgba(151, 162, 153, 0.12), transparent 62%);
+  --surface-card: #365648;
+  --surface-elevated: #446657;
+
+  --text-primary: #edf2ee;
+  /* Muted was #a3b8ad and failed AA on --surface-card at 3.88:1. Lifted a
+     step for the 4.5 floor on card; still well within AA on page. */
+  --text-muted: #b8ccc0;
+  --text-inverse: #14201b;
+
+  --choice-rock: #2f5648;
+  --choice-rock-ink: #edf2ee;
+  --choice-paper: #b3d1c3;
+  --choice-paper-ink: #14201b;
+  --choice-scissors: #7ab097;
+  --choice-scissors-ink: #14201b;
+
+  --outcome-win: #7fe0a4;
+  --outcome-lose: #ff9c9c;
+  --outcome-tie: #a3b8ad;
+
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-choice: 0.5rem;
+  --border-width: 1px;
+  --border-color: #3f5f52;
+  --border-style: solid;
+
+  --font-display: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-body: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --display-transform: none;
+  --display-tracking: 0.02em;
+
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-choice: 0 8px 22px rgba(0, 0, 0, 0.4);
+  --glow-choice: none;
+
+  --motion-ease: 0.4, 0, 0.4, 1;
+  --motion-scale: 1.15;
+
+  --audio-wave: sine;
+  --audio-base-freq: 480;
+  --audio-detune: -4;
+}
+
+/* --------------------------------------------------------------------------
+   8. Coral Origami — set24_origami
+   sampled: coral hand #d55c40 · coral warm #d8664b · lilac ground #a38bc6
+   Faceted coral paper hand against lilac. Two-hue statement: warm coral +
+   cool lilac, both saturated mid-tones. Sans-serif with sharp corners to
+   echo the geometry of the folds.
+   Page ground is deepened from the sampled lilac (#a38bc6) toward #55416d
+   so body text clears AA comfortably; the lilac stays present on cards
+   and elevated surfaces where the identity still needs to read.
+   -------------------------------------------------------------------------- */
+[data-theme='origami'] {
+  --surface-page: #55416d;
+  --surface-page-image: radial-gradient(ellipse at 50% 25%, rgba(213, 199, 222, 0.16), transparent 62%);
+  --surface-card: #6a5286;
+  --surface-elevated: #7c6598;
+
+  --text-primary: #faf4ef;
+  /* Muted was #d5c7de and failed AA on --surface-card at 4.13:1. Lifted a
+     step for the 4.5 floor on card; still well within AA on page. */
+  --text-muted: #e3d5eb;
+  --text-inverse: #2a1c3d;
+
+  --choice-rock: #d55c40;
+  --choice-rock-ink: #2a0f08;
+  --choice-paper: #f4b5a0;
+  --choice-paper-ink: #4a1810;
+  --choice-scissors: #a78ac9;
+  --choice-scissors-ink: #1a1030;
+
+  --outcome-win: #7fe0a4;
+  --outcome-lose: #ffb5a0;
+  --outcome-tie: #d5c7de;
+
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-choice: 0.375rem;
+  --border-width: 1px;
+  --border-color: #6f5891;
+  --border-style: solid;
+
+  --font-display: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --font-body: ui-sans-serif, 'Segoe UI', Roboto, sans-serif;
+  --display-transform: uppercase;
+  --display-tracking: 0.1em;
+
+  --shadow-card: 0 8px 20px rgba(30, 20, 45, 0.4);
+  --shadow-choice: 0 8px 18px rgba(30, 20, 45, 0.45);
+  --glow-choice: none;
+
+  --motion-ease: 0.3, 0.9, 0.4, 1;
+  --motion-scale: 0.98;
+
+  --audio-wave: triangle;
+  --audio-base-freq: 560;
+  --audio-detune: 0;
+}

@@ -44,6 +44,9 @@ const QUALITY = {
   set16_powder: 86, // airborne particles are the whole look and thin out at q78
   set18_glass: 86, // smooth teal gradient behind refractive speculars
   set13_frost: 84, // ice refraction is mid-frequency; mild softening only
+  set19_highroller: 86, // gold rim over dark velvet + soft sparkle field; specular + gradient
+  set23_jade: 84, // matte porcelain skin over flat jade ground; smooth gradients want mild softening only
+  set24_origami: 86, // faceted paper folds — hard edges + flat colour, so q78 posterises the shading between planes
   // set12_molten and set17_ink are deliberately absent: molten scored the cleanest of all 15 sets
   // and ink is paper texture, which is indistinguishable from source at every quality tested.
 };
