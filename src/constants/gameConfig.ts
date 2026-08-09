@@ -69,5 +69,12 @@ export type ImpactLevel = keyof typeof IMPACT_HOLD_MS;
 /**
  * How long the advance button fades in, and stays inert, after the outcome
  * appears, so a fast second tap can't dismiss a result before it is read.
+ *
+ * Trimmed from 250 to 200 because the "outcome → advance clickable" gap ran
+ * ~30ms past the 500-700ms target on deciding rounds and ~30ms past on routine
+ * (830ms and 730ms respectively). 200ms keeps the double-tap guard intact — a
+ * genuine second tap on the same intended target on a phone lands ~180-220ms
+ * after the first — while pulling both the routine (480ms) and deciding
+ * (680ms) cases inside the target range.
  */
-export const ADVANCE_FADE_MS = 250;
+export const ADVANCE_FADE_MS = 200;

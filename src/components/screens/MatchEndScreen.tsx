@@ -48,6 +48,12 @@ export function MatchEndScreen({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
+        // Shares the explicit tween with HomeScreen and RoundScreen so all three
+        // AnimatePresence swaps have the same shape and duration. See the
+        // HomeScreen comment for why. The winner banner keeps its own spring
+        // below — that's punctuation on top of the base fade-in, not the fade
+        // itself.
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
         // Losing reads as subdued, never harsh: the panel desaturates slightly
         // rather than turning aggressive. The recap and stats stay fully legible
         // either way — a loss should still be readable, not punished.

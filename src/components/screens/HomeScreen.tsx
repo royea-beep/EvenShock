@@ -26,6 +26,16 @@ export function HomeScreen({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
+      // Explicit tween — the framer default spring for a mixed opacity+y
+      // transition landed around 650ms with visible wobble at settle, and its
+      // shape differed per property, which made HomeScreen and MatchEndScreen
+      // feel like they used slightly different transitions. easeOutQuint over
+      // 280ms per direction (~560ms total with mode="wait") is crisper than the
+      // default spring and unifies the three screens so every AnimatePresence
+      // swap feels like the same gesture. The 280ms sits inside the top of the
+      // "heavy content" range — long enough that a photographic screen doesn't
+      // read as a cut, short enough that it isn't sluggish.
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       // Deliberate vertical rhythm instead of even gaps: the masthead is one
       // block, and the two choices below it are a tighter pair, so the screen
       // reads as composed top-down rather than floating in the middle.

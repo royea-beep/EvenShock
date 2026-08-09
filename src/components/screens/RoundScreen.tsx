@@ -145,6 +145,11 @@ export function RoundScreen({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
+        // Shares the explicit tween with HomeScreen and MatchEndScreen so all
+        // three AnimatePresence swaps have the same shape and duration. See the
+        // HomeScreen comment for why: the framer default spring was too slow and
+        // too wobbly for content this visually heavy.
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
         className="flex flex-col items-center gap-6 text-center"
       >
         {/* The standing belongs here most of all: this is the moment the player
