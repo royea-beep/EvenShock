@@ -14,6 +14,8 @@ import { MatchEndScreen } from './components/screens/MatchEndScreen';
 import { MuteToggle } from './components/MuteToggle';
 import { FastModeToggle } from './components/FastModeToggle';
 import { LeaveMatchControl } from './components/LeaveMatchControl';
+// TEMPORARY: reveal-variant comparison. Delete with utils/revealVariant.ts.
+import { RevealVariantBadge } from './components/RevealVariantBadge';
 
 function App() {
   const game = useGame();
@@ -74,6 +76,7 @@ function App() {
     <>
       <MuteToggle muted={muted} onToggle={toggleMuted} />
       <FastModeToggle fast={fast} onToggle={toggleFast} />
+      <RevealVariantBadge />
 
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
           which getScreen maps to 'home', and deliberately keeps `format`. */}

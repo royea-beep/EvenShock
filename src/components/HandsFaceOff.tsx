@@ -5,6 +5,13 @@ import type { ImageSet } from '../assets/themes';
 import { copy } from '../constants/copy';
 import { SHAKE_BEATS, SHAKE_BEAT_MS, REVEAL_DELAY_MS, type ImpactLevel } from '../constants/gameConfig';
 import { shuffleStateAt, type ShuffleState } from '../utils/shuffle';
+import {
+  buildUpChoreography,
+  contactOffset,
+  contactScale,
+  REST_X,
+} from '../utils/choreography';
+import { REVEAL_VARIANT } from '../utils/revealVariant';
 import { readThemeMotion } from '../utils/themeTokens';
 import { MoveArt } from './MoveArt';
 
@@ -15,13 +22,6 @@ const HAND_CLASSES: Record<Choice, string> = {
 };
 
 const HAND_SIZE = 'clamp(6rem, 40vw, 24rem)';
-
-/** Resting offsets, as a share of each hand's own width. */
-const REST_X = 7;
-/** Where each hand starts: comfortably past its own edge of the screen. */
-const ENTER_X = 190;
-/** Extra convergence during the build-up — the hands close the distance. */
-const DRIFT_X = 3;
 
 type Phase = 'revealing' | 'result';
 
@@ -206,39 +206,31 @@ function handAnimation({
   }
 
   if (phase === 'revealing') {
-    const beatSeconds = (SHAKE_BEAT_MS / 1000) * motionScale;
-    return {
-      initial: { x: `${ENTER_X * direction}%`, y: 0, rotate: 0, scale: 1 },
-      animate: {
-        // The approach runs across the same beats as the pump, so it costs
-        // nothing on the clock, and closes an extra DRIFT_X at the end — the
-        // hands are still moving toward each other when the snap lands.
-        x: [`${ENTER_X * direction}%`, `${rest}%`, `${(REST_X - DRIFT_X) * direction}%`],
-        y: [0, -22, 0],
-        rotate: [0, direction * -7, 0],
-      },
-      transition: {
-        x: {
-          duration: REVEAL_DELAY_MS / 1000,
-          times: [0, 0.72, 1],
-          ease: [0.22, 0.61, 0.36, 1] as const,
-        },
-        y: { duration: beatSeconds, repeat: SHAKE_BEATS - 1, ease: 'easeInOut' as const },
-        rotate: { duration: beatSeconds, repeat: SHAKE_BEATS - 1, ease: 'easeInOut' as const },
-      },
-    };
+    return buildUpChoreography(REVEAL_VARIANT, {
+      side,
+      direction,
+      outcome,
+      ease,
+      motionScale,
+      level,
+      revealMs: REVEAL_DELAY_MS,
+      beatSeconds: (SHAKE_BEAT_MS / 1000) * motionScale,
+      beats: SHAKE_BEATS,
+    });
   }
 
   const won = outcome === (side === 'player' ? 'win' : 'lose');
   const lost = outcome === (side === 'player' ? 'lose' : 'win');
-  const contact = (REST_X - DRIFT_X) * direction;
+  // Start the impact exactly where the build-up left this hand, or it jumps.
+  const contact = contactOffset(REVEAL_VARIANT, direction);
+  const fromScale = contactScale(REVEAL_VARIANT);
 
   // A tie is neither: both bounce off the same distance, so "no winner" has its
   // own shape rather than being a weak version of one.
   const settle =
     outcome === 'tie' ? rest * 2.4
-    : won ? contact * 0.05
-    : lost ? contact * 3.4
+    : won ? rest * 0.05
+    : lost ? rest * 3.4
     : rest;
 
   const endScale = won ? 1.12 : lost ? 0.84 : 0.95;
@@ -252,10 +244,12 @@ function handAnimation({
     (level === 'deciding' ? 0.62 : level === 'fast' ? 0.26 : 0.42) * motionScale;
 
   return {
-    initial: { x: `${contact}%`, y: 0, rotate: 0, scale: 1, opacity: 1 },
+    initial: { x: `${contact}%`, y: 0, rotate: 0, scale: fromScale, opacity: 1 },
     animate: {
-      x: [`${contact}%`, `${contact}%`, `${settle}%`],
-      scale: [1, 0.9, endScale],
+      // Variant B is still coiled at contact, so the middle keyframe is the
+      // throw itself rather than a compression of an already-arrived hand.
+      x: [`${contact}%`, `${rest * 0.6}%`, `${settle}%`],
+      scale: [fromScale, fromScale * 0.92, endScale],
       rotate: [0, 0, endRotate],
       opacity: [1, 1, endOpacity],
       y: 0,
