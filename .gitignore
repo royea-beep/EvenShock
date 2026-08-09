@@ -65,10 +65,22 @@ web_modules/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variable files
-.env
+# dotenv environment variable files.
+# .env IS committed for this project: it holds only the Supabase project URL
+# and the publishable anon key, both of which ship in the built JS regardless
+# (Vite inlines them at build time) and are public by design — RLS is what
+# protects the data, not key secrecy. Real secrets (FTP password, service
+# role key) never live here; they're GitHub Actions secrets.
+# The explicit un-ignore is required because a global core.excludesFile
+# ignores `.env` for most projects.
+!.env
 .env.*
 !.env.example
+!.env.local.example
+# Local overrides stay ignored so a developer can point at their own project
+# without editing the tracked .env.
+.env.local
+.env.*.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

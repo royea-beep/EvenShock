@@ -9,6 +9,7 @@ import { useFastMode } from './hooks/useFastMode';
 import { useAuth } from './hooks/useAuth';
 import { usePersistence } from './hooks/usePersistence';
 import { useMatchPersistence } from './hooks/useMatchPersistence';
+import { usePrefsMigration } from './hooks/usePrefsMigration';
 import { getScreen } from './utils/getScreen';
 import { unlockAudio } from './utils/sound';
 import { HomeScreen } from './components/screens/HomeScreen';
@@ -26,7 +27,7 @@ function App() {
   const game = useGame();
   const screen = getScreen(game);
   const { muted, toggleMuted } = useMuted();
-  const { fast, toggleFast } = useFastMode();
+  const { fast, toggleFast, setFast } = useFastMode();
   const { theme, setTheme } = useTheme();
   const imageSet = useThemeImages(theme);
   // Derived in the UI layer, deliberately: useGame stays the multiplayer seam.
@@ -47,6 +48,19 @@ function App() {
     history,
     theme,
     fast,
+  });
+
+  // On first sign-in: copy localStorage prefs to profiles for columns that
+  // are null, and apply profile prefs to app state for columns that aren't.
+  // One-shot per session — see usePrefsMigration for the rules.
+  usePrefsMigration({
+    auth,
+    theme,
+    format: game.format,
+    fast,
+    setTheme,
+    setFormat: game.setFormat,
+    setFast,
   });
 
   const shakeControls = useAnimationControls();

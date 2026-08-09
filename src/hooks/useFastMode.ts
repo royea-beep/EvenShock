@@ -47,6 +47,15 @@ export function useFastMode() {
     apply(fast);
   }, [fast]);
 
+  const writeAndSet = useCallback((next: boolean) => {
+    setFast(next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, String(next));
+    } catch {
+      // Preference is lost on reload; the session still honours it.
+    }
+  }, []);
+
   const toggleFast = useCallback(() => {
     setFast((previous) => {
       const next = !previous;
@@ -59,5 +68,8 @@ export function useFastMode() {
     });
   }, []);
 
-  return { fast, toggleFast };
+  // Direct setter for the prefs-migration hook: when a signed-in profile
+  // carries a fast_mode value, it needs to be applied without needing to know
+  // the current state to decide whether to toggle.
+  return { fast, toggleFast, setFast: writeAndSet };
 }
