@@ -12,19 +12,16 @@ import {
 import type { ThemeId } from '../../constants/themes';
 import { ChoiceButton } from '../ChoiceButton';
 import { HandsFaceOff } from '../HandsFaceOff';
-import { ImpactBurst } from '../ImpactBurst';
+// TEMPORARY: impact-variant switcher lives in impact/ImpactEffects.tsx. When a
+// variant is chosen, either move the effect JSX back inline here or keep the
+// module and delete the other variants. See utils/impactVariant.ts.
+import { ImpactEffects } from '../impact/ImpactEffects';
 import { MatchStatusBar, OUTCOME_MARK } from '../MatchStatusBar';
 import { play } from '../../utils/sound';
 import type { RoundEntry } from '../../utils/roundHistory';
 import type { ImageSet } from '../../assets/themes';
 
 const CHOICES: Choice[] = ['rock', 'paper', 'scissors'];
-
-const FLASH_CLASSES: Record<RoundOutcome, string> = {
-  win: 'bg-win',
-  lose: 'bg-lose',
-  tie: 'bg-tie',
-};
 
 const OUTCOME_TEXT_CLASSES: Record<RoundOutcome, string> = {
   win: 'text-win',
@@ -218,38 +215,6 @@ export function RoundScreen({
           )}
         </div>
 
-        {phase === 'result' && roundResult && !reducedMotion && (
-          <motion.div
-            key={`flash-${roundNumber}`}
-            aria-hidden="true"
-            style={{ borderRadius: 'var(--radius-themed-md)' }}
-            className={`pointer-events-none absolute inset-0 ${FLASH_CLASSES[roundResult]}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.35, 0] }}
-            transition={{ duration: 0.6, times: [0, 0.18, 1], ease: 'easeOut' }}
-          />
-        )}
-
-        {/* The white hit. Confined to the stage rather than the viewport, and
-            below the outcome line, so it never composites over text the player
-            has to read — which is also what keeps AA intact during the impact.
-            One rise and one fall, no repeat: a strobe is a health hazard, not a
-            stronger flash. Short and modest rather than long and bright — at
-            0.22s it measured visible for 10 frames, which is a wash, not a hit;
-            100ms puts it at 5-6 frames with the peak on about the second. Rare
-            was never meant to license harsh. */}
-        {phase === 'result' && bigPayoff && (
-          <motion.div
-            key={`hit-${roundNumber}`}
-            aria-hidden="true"
-            style={{ borderRadius: 'var(--radius-themed-md)', backgroundColor: '#ffffff' }}
-            className="pointer-events-none absolute inset-0 z-30"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.5, 0] }}
-            transition={{ duration: 0.1, times: [0, 0.3, 1], ease: 'easeOut' }}
-          />
-        )}
-
         <HandsFaceOff
           playerChoice={playerChoice as Choice}
           botChoice={botChoice}
@@ -260,25 +225,21 @@ export function RoundScreen({
           level={level}
         />
 
-        {/* Shockwave + particles sit over the stage, never over the outcome
-            line below it, so nothing the player has to read is composited
-            against a moving highlight. */}
-        {phase === 'result' && bigPayoff && roundResult !== 'tie' && (
-          <motion.span
-            key={`ring-${roundNumber}`}
-            aria-hidden="true"
-            initial={{ opacity: 0.5, scale: 0.15 }}
-            animate={{ opacity: 0, scale: 1 }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
-            style={{ borderColor: 'var(--text-primary)' }}
-            className="pointer-events-none absolute left-1/2 top-1/2 z-20 h-[42vw] w-[42vw] max-h-96 max-w-96 -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
+        {/* Overlays live in a single component so a variant can be one branch
+            change rather than a scatter of gates across the tree. Every effect
+            still sits INSIDE the stage — nothing composites over the outcome
+            text below it — and each variant is gated on `bigPayoff` (deciding
+            + !reducedMotion), so the leak guarantee and the reduced-motion
+            fallback are inherited unchanged. */}
+        {phase === 'result' && roundResult && (
+          <ImpactEffects
+            active={bigPayoff}
+            roundNumber={roundNumber}
+            roundResult={roundResult}
+            burstKey={burstKey}
+            theme={theme}
           />
         )}
-
-        {/* Mounted for the whole reveal, not just the result: the canvas has
-            to be allocated and scaled BEFORE the snap, or that work lands on
-            the impact frame. It draws nothing until fireKey is set. */}
-        {bigPayoff && <ImpactBurst fireKey={phase === 'result' ? burstKey : null} theme={theme} />}
       </div>
 
       <div className="min-h-[4.5rem] w-full">

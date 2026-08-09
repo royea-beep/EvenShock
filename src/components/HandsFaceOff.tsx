@@ -12,6 +12,7 @@ import {
   REST_X,
 } from '../utils/choreography';
 import { readThemeMotion } from '../utils/themeTokens';
+import { IMPACT_VARIANT, type ImpactVariant } from '../utils/impactVariant';
 import { MoveArt } from './MoveArt';
 
 const HAND_CLASSES: Record<Choice, string> = {
@@ -96,7 +97,7 @@ function Hand({ side, choice, label, phase, roundKey, outcome, imageSet, level }
   const unsettled = shuffling && shuffle !== null;
 
   const direction = side === 'player' ? -1 : 1;
-  const animation = handAnimation({ side, phase, outcome, reducedMotion, direction, ease, motionScale, level });
+  const animation = handAnimation({ side, phase, outcome, reducedMotion, direction, ease, motionScale, level, variant: IMPACT_VARIANT });
 
   return (
     <div className="relative flex flex-col items-center gap-3">
@@ -186,6 +187,7 @@ interface AnimationArgs {
   ease: [number, number, number, number];
   motionScale: number;
   level: ImpactLevel;
+  variant: ImpactVariant;
 }
 
 /**
@@ -201,6 +203,7 @@ function handAnimation({
   ease,
   motionScale,
   level,
+  variant,
 }: AnimationArgs) {
   const rest = REST_X * direction;
 
@@ -227,23 +230,69 @@ function handAnimation({
   const contact = contactOffset(direction);
   const fromScale = CONTACT_SCALE;
 
-  // A tie is neither: both bounce off the same distance, so "no winner" has its
-  // own shape rather than being a weak version of one.
+  // Variant D throws the loser off-screen, so its settle position sits far
+  // outside the stage. The stage's overflow-x-clip catches it — verified by
+  // the timing-audit overflow probe. Rotation is exaggerated for D as well:
+  // an off-screen hand should tumble, not glide.
   const settle =
-    outcome === 'tie' ? rest * 2.4
+    variant === 'd' && lost ? direction * 300
+    : outcome === 'tie' ? rest * 2.4
     : won ? rest * 0.05
     : lost ? rest * 3.4
     : rest;
 
-  const endScale = won ? 1.12 : lost ? 0.84 : 0.95;
-  // The loser is knocked off-axis; the winner stays square to the camera.
-  const endRotate = lost ? direction * 9 : 0;
-  const endOpacity = lost ? 0.72 : 1;
+  // Variant C pushes the winner slightly further and slower — cinematic
+  // push-in. Variant D scales the loser down further as it flies away.
+  const endScale =
+    variant === 'c' && won ? 1.16
+    : variant === 'd' && lost ? 0.62
+    : won ? 1.12 : lost ? 0.84 : 0.95;
+
+  // Loser rotation: variant D tumbles hard, others stay near the current 9deg.
+  const endRotate =
+    variant === 'd' && lost ? direction * 45
+    : lost ? direction * 9
+    : 0;
+
+  // Loser fade: variant D fades the loser out entirely as it exits.
+  const endOpacity =
+    variant === 'd' && lost ? 0
+    : lost ? 0.72
+    : 1;
 
   // Slow motion lives here: the same impact, played longer. Deciding rounds
   // stretch it; fast mode compresses it.
-  const impactSeconds =
+  // Variant C stretches everything to a filmic ~1.0s; variant B holds a
+  // freeze frame for the first ~120ms and then compresses the rest.
+  const baseImpactSeconds =
     (level === 'deciding' ? 0.62 : level === 'fast' ? 0.26 : 0.42) * motionScale;
+
+  if (variant === 'b') {
+    // Hit-stop: freeze at contact for ~120ms (two identical keyframes), then
+    // release into the same knockback compressed into the remaining budget.
+    const freezeSeconds = 0.12;
+    const releaseSeconds = baseImpactSeconds;
+    const totalSeconds = freezeSeconds + releaseSeconds;
+    const freezeRatio = freezeSeconds / totalSeconds;
+    const midRatio = freezeRatio + (1 - freezeRatio) * (level === 'deciding' ? 0.34 : 0.28);
+    return {
+      initial: { x: `${contact}%`, y: 0, rotate: 0, scale: fromScale, opacity: 1 },
+      animate: {
+        x: [`${contact}%`, `${contact}%`, `${rest * 0.6}%`, `${settle}%`],
+        scale: [fromScale, fromScale, fromScale * 0.92, endScale],
+        rotate: [0, 0, 0, endRotate],
+        opacity: [1, 1, 1, endOpacity],
+        y: 0,
+      },
+      transition: {
+        duration: totalSeconds,
+        times: [0, freezeRatio, midRatio, 1],
+        ease,
+      },
+    };
+  }
+
+  const impactSeconds = variant === 'c' ? 1.0 * motionScale : baseImpactSeconds;
 
   return {
     initial: { x: `${contact}%`, y: 0, rotate: 0, scale: fromScale, opacity: 1 },

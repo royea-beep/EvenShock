@@ -126,6 +126,10 @@ interface ImpactBurstProps {
   /** Bumped to fire a burst; null means nothing has landed yet. */
   fireKey: number | null;
   theme: ThemeId;
+  /** Delay burst start after `fireKey` bumps. Used by the hit-stop impact
+   *  variant so particles land AFTER the freeze release, not during the still
+   *  frame. Zero (the default) means fire immediately. */
+  startDelayMs?: number;
 }
 
 /**
@@ -135,7 +139,7 @@ interface ImpactBurstProps {
  * itself when the last particle dies. It only ever runs on match-deciding
  * rounds, so the cost is paid roughly once per match rather than once a round.
  */
-export function ImpactBurst({ fireKey, theme }: ImpactBurstProps) {
+export function ImpactBurst({ fireKey, theme, startDelayMs = 0 }: ImpactBurstProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reducedMotion = useReducedMotion();
 
@@ -169,65 +173,82 @@ export function ImpactBurst({ fireKey, theme }: ImpactBurstProps) {
     const { width, height } = sizeRef.current;
     if (!width || !height) return;
 
-    const profile = PROFILES[theme];
-    const originX = width / 2;
-    const originY = height / 2;
-    const particles: Particle[] = [];
+    // Optional delay before starting the RAF loop — used by the hit-stop impact
+    // variant so particles land AFTER the freeze release, not during the still
+    // frame. Zero (the default) fires the burst immediately.
+    let startTimer: ReturnType<typeof setTimeout> | null = null;
+    let raf = 0;
 
-    for (let i = 0; i < profile.count; i += 1) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = profile.speed[0] + Math.random() * (profile.speed[1] - profile.speed[0]);
-      particles.push({
-        x: originX,
-        y: originY,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - profile.lift * speed,
-        life: profile.life * (0.65 + Math.random() * 0.35),
-        size: profile.size[0] + Math.random() * (profile.size[1] - profile.size[0]),
-        colour: profile.colours[Math.floor(Math.random() * profile.colours.length)],
-        gravity: profile.gravity,
-        drag: profile.drag,
-      });
+    const runBurst = () => {
+      const profile = PROFILES[theme];
+      const originX = width / 2;
+      const originY = height / 2;
+      const particles: Particle[] = [];
+
+      for (let i = 0; i < profile.count; i += 1) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = profile.speed[0] + Math.random() * (profile.speed[1] - profile.speed[0]);
+        particles.push({
+          x: originX,
+          y: originY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - profile.lift * speed,
+          life: profile.life * (0.65 + Math.random() * 0.35),
+          size: profile.size[0] + Math.random() * (profile.size[1] - profile.size[0]),
+          colour: profile.colours[Math.floor(Math.random() * profile.colours.length)],
+          gravity: profile.gravity,
+          drag: profile.drag,
+        });
+      }
+
+      let last = performance.now();
+      const started = last;
+
+      const frame = (now: number) => {
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
+        ctx.clearRect(0, 0, width, height);
+
+        let alive = false;
+        for (const p of particles) {
+          const age = now - started;
+          if (age > p.life) continue;
+          alive = true;
+          p.vy += p.gravity * dt;
+          p.vx *= Math.pow(p.drag, dt * 60);
+          p.vy *= Math.pow(p.drag, dt * 60);
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+
+          ctx.globalAlpha = Math.max(0, 1 - age / p.life);
+          ctx.fillStyle = p.colour;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        if (alive) raf = requestAnimationFrame(frame);
+        else ctx.clearRect(0, 0, width, height);
+      };
+      raf = requestAnimationFrame(frame);
+    };
+
+    if (startDelayMs > 0) {
+      startTimer = setTimeout(() => {
+        startTimer = null;
+        runBurst();
+      }, startDelayMs);
+    } else {
+      runBurst();
     }
 
-    let raf = 0;
-    let last = performance.now();
-    const started = last;
-
-    const frame = (now: number) => {
-      const dt = Math.min((now - last) / 1000, 0.05);
-      last = now;
-      ctx.clearRect(0, 0, width, height);
-
-      let alive = false;
-      for (const p of particles) {
-        const age = now - started;
-        if (age > p.life) continue;
-        alive = true;
-        p.vy += p.gravity * dt;
-        p.vx *= Math.pow(p.drag, dt * 60);
-        p.vy *= Math.pow(p.drag, dt * 60);
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-
-        ctx.globalAlpha = Math.max(0, 1 - age / p.life);
-        ctx.fillStyle = p.colour;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-
-      if (alive) raf = requestAnimationFrame(frame);
-      else ctx.clearRect(0, 0, width, height);
-    };
-    raf = requestAnimationFrame(frame);
-
     return () => {
+      if (startTimer !== null) clearTimeout(startTimer);
       cancelAnimationFrame(raf);
       ctx.clearRect(0, 0, width, height);
     };
-  }, [fireKey, theme, reducedMotion]);
+  }, [fireKey, theme, reducedMotion, startDelayMs]);
 
   if (reducedMotion) return null;
 

@@ -14,6 +14,9 @@ import { MatchEndScreen } from './components/screens/MatchEndScreen';
 import { MuteToggle } from './components/MuteToggle';
 import { FastModeToggle } from './components/FastModeToggle';
 import { LeaveMatchControl } from './components/LeaveMatchControl';
+// TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
+import { ImpactVariantBadge } from './components/ImpactVariantBadge';
+import { IMPACT_VARIANT } from './utils/impactVariant';
 
 function App() {
   const game = useGame();
@@ -50,6 +53,22 @@ function App() {
     shakenRound.current = game.roundNumber;
 
     if (deciding && game.roundResult !== 'tie') {
+      // TEMPORARY: impact-variant branching. See utils/impactVariant.ts.
+      //   a — current: single-axis knock + subtle push-in
+      //   b — hit-stop: no shake (the freeze in HandsFaceOff replaces it)
+      //   c — cinematic: no shake (a film beat, not a game beat)
+      //   d — crush: heavier multi-axis knock over a longer window
+      if (IMPACT_VARIANT === 'b' || IMPACT_VARIANT === 'c') return;
+
+      if (IMPACT_VARIANT === 'd') {
+        void shakeControls.start({
+          x: [0, -18, 15, -12, 9, -5, 0],
+          y: [0, 6, -5, 8, -3, 2, 0],
+          scale: [1, 1.04, 1.015, 1.02, 1, 1],
+          transition: { duration: 0.5, ease: 'easeInOut' },
+        });
+        return;
+      }
       void shakeControls.start({
         x: [0, -10, 9, -6, 4, 0],
         scale: [1, 1.02, 1.005, 1],
@@ -74,6 +93,7 @@ function App() {
     <>
       <MuteToggle muted={muted} onToggle={toggleMuted} />
       <FastModeToggle fast={fast} onToggle={toggleFast} />
+      <ImpactVariantBadge />
 
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
           which getScreen maps to 'home', and deliberately keeps `format`. */}
@@ -86,7 +106,13 @@ function App() {
         />
       )}
 
-      <main className="flex min-h-dvh items-center justify-center p-6">
+      {/* overflow-x-clip is defensive for the impact-variant D throw + shake:
+          the loser flies to x=300% of the hand and the App-level shake peaks
+          at 15px in X. HandsFaceOff already clips its own wrapper, but a
+          scrollbar-width bulge showed up at 1920 in the timing-audit overflow
+          probe. Clipping main is the belt-and-braces version and does nothing
+          on other variants because they never move anything past this box. */}
+      <main className="flex min-h-dvh items-center justify-center overflow-x-clip p-6">
         {/* Home carries an eight-tile grid and wants the extra width; the round
             screen runs full width so the reveal has a stage to cross, and
             constrains its own bar and caption internally.
