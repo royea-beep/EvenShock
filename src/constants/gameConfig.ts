@@ -1,7 +1,18 @@
 /** Number of pumps before the reveal snap. Beat 4 is the snap itself ("Shoot!"). */
 export const SHAKE_BEATS = 3;
 
-const BEAT_NORMAL_MS = 220;
+/**
+ * 290ms, up from 220ms. The wind-up needs the room: at 660ms the hand reached
+ * its coil and was thrown almost immediately, so the retreat read as travel
+ * rather than as loading. 870ms splits into ~400ms of pull-back and ~470ms
+ * coiled, which is where the tension actually lives.
+ *
+ * Fast mode is deliberately NOT scaled with it. It stays at the old brisk beat
+ * and is now the larger saving — which is the point: it is the escape hatch for
+ * players who don't want the ceremony, and if most of them take it, the normal
+ * pace is too long and this number should come back down.
+ */
+const BEAT_NORMAL_MS = 290;
 const BEAT_FAST_MS = 167;
 
 /**
@@ -40,8 +51,8 @@ export const SHOOT_HOLD_MS = 180;
  * only place the sequence budget is spent, and it is spent unevenly on purpose.
  *
  *   fast      501 + 200 =  701ms
- *   routine   660 + 280 =  940ms
- *   deciding  660 + 480 = 1140ms
+ *   routine   870 + 280 = 1150ms
+ *   deciding  870 + 480 = 1350ms
  *
  * The peak is reserved for the round that ends the match. A slow-motion beat
  * and a screen flash on every single round is the thing most likely to grate by

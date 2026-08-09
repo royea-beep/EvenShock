@@ -11,8 +11,10 @@ export const SHUFFLE_STEPS = 7;
  * so with EASE > 1 the early steps are short and the late ones long: the cycle
  * visibly slows and appears to settle, instead of running flat into the snap.
  *
- * At a 660ms build-up that gives steps of roughly
- * 29 / 60 / 81 / 100 / 115 / 131 / 144 ms.
+ * At the 870ms build-up that gives steps of roughly
+ * 38 / 79 / 107 / 132 / 152 / 172 / 190 ms; at Fast mode's 501ms, roughly
+ * 22 / 45 / 61 / 76 / 88 / 99 / 110 ms. `setShuffleDuration` is driven from
+ * REVEAL_DELAY_MS, so the cycle always fills exactly the build-up it runs under.
  */
 const EASE = 1.6;
 

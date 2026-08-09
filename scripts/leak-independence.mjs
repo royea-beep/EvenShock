@@ -25,6 +25,14 @@ import { chromium } from 'playwright';
 
 const URL = process.env.URL ?? 'http://localhost:4193/evenshock/';
 const ROUNDS = Number(process.env.ROUNDS ?? 140);
+/**
+ * Stop sampling this far into the build-up. Must stay BELOW REVEAL_DELAY_MS
+ * (currently 870ms at normal pace): frames from the snap onward legitimately
+ * show the real answer, so including them would measure the intended reveal
+ * rather than a leak, and the test would fail by construction. Raise this
+ * whenever the build-up lengthens, or the second half stops being sampled.
+ */
+const SAMPLE_UNTIL_MS = Number(process.env.SAMPLE_UNTIL_MS ?? 820);
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || undefined,
@@ -42,7 +50,7 @@ for (let round = 0; round < ROUNDS; round += 1) {
   await page.getByText('Start game', { exact: true }).click();
   await page.waitForTimeout(220);
 
-  await page.evaluate(() => {
+  await page.evaluate((until) => {
     window.__trace = [];
     window.__t0 = null;
     document.addEventListener(
@@ -52,7 +60,7 @@ for (let round = 0; round < ROUNDS; round += 1) {
         window.__t0 = performance.now();
         const tick = () => {
           const elapsed = performance.now() - window.__t0;
-          if (elapsed >= 620) return; // stop before the snap
+          if (elapsed >= until) return; // stop before the snap
           const slot = [...document.querySelectorAll('span')]
             .filter((s) => s.textContent === 'Bot')[0]?.parentElement;
           const img = slot?.querySelector('img');
@@ -66,10 +74,10 @@ for (let round = 0; round < ROUNDS; round += 1) {
       },
       { capture: true, once: true },
     );
-  });
+  }, SAMPLE_UNTIL_MS);
 
   await page.getByRole('button', { name: 'Rock', exact: true }).first().click();
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(1500);
 
   samples.push(
     await page.evaluate(() => {

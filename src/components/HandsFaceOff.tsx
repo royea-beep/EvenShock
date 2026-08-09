@@ -8,10 +8,9 @@ import { shuffleStateAt, type ShuffleState } from '../utils/shuffle';
 import {
   buildUpChoreography,
   contactOffset,
-  contactScale,
+  CONTACT_SCALE,
   REST_X,
 } from '../utils/choreography';
-import { REVEAL_VARIANT } from '../utils/revealVariant';
 import { readThemeMotion } from '../utils/themeTokens';
 import { MoveArt } from './MoveArt';
 
@@ -145,12 +144,20 @@ function Hand({ side, choice, label, phase, roundKey, outcome, imageSet, level }
             {/* A standing "unknown" chip for the whole build-up. Together with
                 the blur it makes "still shuffling" and "settled" two visibly
                 different states, so a player reading the near-miss as final
-                would have to ignore both. */}
+                would have to ignore both.
+
+                Pinned to the INNER edge (left, since only the bot's hand ever
+                shuffles). The wind-up now holds the hand at 40% of its own
+                width toward the outside of the stage for over half the
+                build-up, and the stage clips there — on the outer edge this
+                chip was cut off for most of the reveal at 900px and all of it
+                at 430px, quietly reducing the "not settled" signal to the blur
+                alone. The inner edge is on stage at every coil depth. */}
             {unsettled && (
               <span
                 aria-hidden="true"
                 style={{ borderRadius: 'var(--radius-sm)' }}
-                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center bg-elevated/90 text-base font-black text-ink"
+                className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center bg-elevated/90 text-base font-black text-ink"
               >
                 ?
               </span>
@@ -206,13 +213,8 @@ function handAnimation({
   }
 
   if (phase === 'revealing') {
-    return buildUpChoreography(REVEAL_VARIANT, {
-      side,
+    return buildUpChoreography({
       direction,
-      outcome,
-      ease,
-      motionScale,
-      level,
       revealMs: REVEAL_DELAY_MS,
       beatSeconds: (SHAKE_BEAT_MS / 1000) * motionScale,
       beats: SHAKE_BEATS,
@@ -222,8 +224,8 @@ function handAnimation({
   const won = outcome === (side === 'player' ? 'win' : 'lose');
   const lost = outcome === (side === 'player' ? 'lose' : 'win');
   // Start the impact exactly where the build-up left this hand, or it jumps.
-  const contact = contactOffset(REVEAL_VARIANT, direction);
-  const fromScale = contactScale(REVEAL_VARIANT);
+  const contact = contactOffset(direction);
+  const fromScale = CONTACT_SCALE;
 
   // A tie is neither: both bounce off the same distance, so "no winner" has its
   // own shape rather than being a weak version of one.
@@ -246,7 +248,7 @@ function handAnimation({
   return {
     initial: { x: `${contact}%`, y: 0, rotate: 0, scale: fromScale, opacity: 1 },
     animate: {
-      // Variant B is still coiled at contact, so the middle keyframe is the
+      // The hand is still coiled at contact, so the middle keyframe is the
       // throw itself rather than a compression of an already-arrived hand.
       x: [`${contact}%`, `${rest * 0.6}%`, `${settle}%`],
       scale: [fromScale, fromScale * 0.92, endScale],

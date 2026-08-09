@@ -19,15 +19,20 @@ afterEach(() => setPace(false));
 describe('sequence budget', () => {
   const total = (hold: number) => REVEAL_DELAY_MS + hold;
 
-  it('runs a routine round at about 940ms', () => {
+  it('runs a routine round at about 1150ms', () => {
     setPace(false);
-    expect(total(IMPACT_HOLD_MS.routine)).toBe(940);
+    expect(total(IMPACT_HOLD_MS.routine)).toBe(1150);
   });
 
-  it('runs a match-deciding round at about 1140ms, under the ~1150 agreed peak', () => {
+  it('runs a match-deciding round at about 1350ms', () => {
+    // This exceeds the ~1150ms ceiling agreed in Phase B, and does so on
+    // purpose: the wind-up was chosen over the alternatives and then asked to
+    // hold its coil longer, which can only be bought with time. 1350ms is the
+    // stated cap now — Fast mode, unchanged at 701ms, is the answer for anyone
+    // who wants the old brevity.
     setPace(false);
-    expect(total(IMPACT_HOLD_MS.deciding)).toBe(1140);
-    expect(total(IMPACT_HOLD_MS.deciding)).toBeLessThanOrEqual(1150);
+    expect(total(IMPACT_HOLD_MS.deciding)).toBe(1350);
+    expect(total(IMPACT_HOLD_MS.deciding)).toBeLessThanOrEqual(1350);
   });
 
   it('runs a fast round at about 700ms', () => {
@@ -60,7 +65,16 @@ describe('pace', () => {
   it('restores the full pace when switched back', () => {
     setPace(true);
     setPace(false);
-    expect(REVEAL_DELAY_MS).toBe(660);
-    expect(SHAKE_BEAT_MS).toBe(220);
+    expect(REVEAL_DELAY_MS).toBe(870);
+    expect(SHAKE_BEAT_MS).toBe(290);
+  });
+
+  it('leaves Fast mode at the brisk beat rather than scaling it with the wind-up', () => {
+    // Fast is the escape hatch. If it grew with the normal pace it would stop
+    // being one, and the "are most players on Fast?" signal would stop meaning
+    // anything.
+    setPace(true);
+    expect(SHAKE_BEAT_MS).toBe(167);
+    expect(REVEAL_DELAY_MS).toBe(501);
   });
 });
