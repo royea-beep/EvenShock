@@ -1,0 +1,43 @@
+# EvenShock is served from https://ftable.co.il/evenshock/, a subdirectory of a
+# site that sends its own Content-Security-Policy. That policy's connect-src
+# allowlists ftable's Supabase project, not ours, so the browser refuses every
+# request to ours and wallet sign-in never gets to run:
+#
+#   Refused to connect to 'https://qgnxppzchqwpwerajhlu.supabase.co/...'
+#   because it violates the document's Content Security Policy.
+#
+# This file confines the fix to this directory; the parent site is untouched.
+# Vite copies public/ into dist/, and the FTP deploy ships dist/, so it lands
+# next to index.html with no manual server step.
+
+<IfModule mod_headers.c>
+  # `edit`, not `set`. `set` replaces the whole header, which would silently drop
+  # every other directive the parent policy carries -- script-src,
+  # frame-ancestors, object-src and the rest -- trading a connection bug for a
+  # materially weaker page. `edit` rewrites only the connect-src directive and
+  # leaves the others exactly as the parent set them.
+  #
+  # Both forms are listed because we cannot see how the parent sets the header:
+  # plain `edit` reaches headers on successful responses, `always edit` reaches
+  # the table used by `Header always set` and by error responses. Whichever does
+  # not match is a harmless no-op.
+  #
+  # The replacement list is deliberately minimal rather than the parent's list
+  # plus ours. Inside /evenshock/ nothing loads from cdn.jsdelivr.net, from
+  # ftable's Supabase project, or from its analytics hosts -- this app's only
+  # external origin is its own Supabase project -- so re-listing them would
+  # widen this directory's policy for no reason.
+  #
+  # wss:// is not optional. Supabase Realtime opens a websocket, and a policy
+  # allowing only https:// blocks it. Leaving it out would surface later as
+  # multiplayer failing rather than as a sign-in failure, which is a much harder
+  # bug to find.
+  Header        edit Content-Security-Policy "connect-src[^;]*" "connect-src 'self' https://qgnxppzchqwpwerajhlu.supabase.co wss://qgnxppzchqwpwerajhlu.supabase.co"
+  Header always edit Content-Security-Policy "connect-src[^;]*" "connect-src 'self' https://qgnxppzchqwpwerajhlu.supabase.co wss://qgnxppzchqwpwerajhlu.supabase.co"
+</IfModule>
+
+# The <IfModule> guard is load-bearing. An unguarded Header directive on a host
+# without mod_headers is a fatal .htaccess error, which would turn "the app
+# cannot reach Supabase" into "the whole directory returns 500". Guarded, the
+# worst case is that nothing changes and the original console error remains --
+# which is also how you tell mod_headers is unavailable.
