@@ -13,6 +13,7 @@
     "themes:separation": "node scripts/theme-separation.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.2",
     "framer-motion": "^13.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

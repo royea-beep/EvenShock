@@ -6,6 +6,9 @@ import { useThemeImages } from './hooks/useThemeImages';
 import { useRoundHistory } from './hooks/useRoundHistory';
 import { useMuted } from './hooks/useMuted';
 import { useFastMode } from './hooks/useFastMode';
+import { useAuth } from './hooks/useAuth';
+import { usePersistence } from './hooks/usePersistence';
+import { useMatchPersistence } from './hooks/useMatchPersistence';
 import { getScreen } from './utils/getScreen';
 import { unlockAudio } from './utils/sound';
 import { HomeScreen } from './components/screens/HomeScreen';
@@ -14,6 +17,7 @@ import { MatchEndScreen } from './components/screens/MatchEndScreen';
 import { MuteToggle } from './components/MuteToggle';
 import { FastModeToggle } from './components/FastModeToggle';
 import { LeaveMatchControl } from './components/LeaveMatchControl';
+import { WalletButton } from './components/WalletButton';
 // TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
 import { ImpactVariantBadge } from './components/ImpactVariantBadge';
 import { IMPACT_VARIANT } from './utils/impactVariant';
@@ -28,6 +32,22 @@ function App() {
   // Derived in the UI layer, deliberately: useGame stays the multiplayer seam.
   const history = useRoundHistory(game);
   const reducedMotion = useReducedMotion();
+
+  // Auth + persistence sit OUTSIDE useGame. useGame stores nothing, and this
+  // is the layer that watches its state and writes finished matches to the
+  // backend when the player is authenticated. Guests get a no-op backend so
+  // no branching is needed at the call site.
+  const auth = useAuth();
+  const persistence = usePersistence(auth.status === 'authenticated');
+  useMatchPersistence(persistence, {
+    matchStatus: game.matchStatus,
+    matchWinner: game.matchWinner,
+    format: game.format,
+    score: game.score,
+    history,
+    theme,
+    fast,
+  });
 
   const shakeControls = useAnimationControls();
   const shakenRound = useRef<number | null>(null);
@@ -93,6 +113,7 @@ function App() {
     <>
       <MuteToggle muted={muted} onToggle={toggleMuted} />
       <FastModeToggle fast={fast} onToggle={toggleFast} />
+      <WalletButton auth={auth} />
       <ImpactVariantBadge />
 
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
