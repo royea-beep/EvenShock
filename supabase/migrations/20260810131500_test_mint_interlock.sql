@@ -172,7 +172,13 @@ revoke all on function public.credit_purchase(text, text, uuid, uuid, text, text
 -- wrong for anything else — and the value scales the amount, so being wrong
 -- means crediting a player 1000x or 1/1000th of what they paid. It costs
 -- nothing to return the column that already exists.
-create or replace function public.open_intents_for_reconcile(p_max_age interval default '7 days')
+--
+-- Dropped rather than replaced: adding an OUT column changes the row type, and
+-- `create or replace` refuses that. Safe here because the only caller is the
+-- Edge Function, which is deployed from this same commit.
+drop function if exists public.open_intents_for_reconcile(interval);
+
+create function public.open_intents_for_reconcile(p_max_age interval default '7 days')
 returns table (id uuid, user_id uuid, cluster text, reference text,
                treasury_address text, usdc_mint text, usdc_decimals int,
                chips_per_usdc int)
