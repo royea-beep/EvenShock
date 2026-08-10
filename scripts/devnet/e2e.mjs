@@ -121,7 +121,16 @@ check(
 
 await connection.confirmTransaction(sigA, 'confirmed');
 const creditedA = await play1({ action: 'confirm_payment', intent_id: A.intent_id, signature: sigA });
-check('1.000000 credits 100 chips', creditedA.body?.chips_credited === chipsFor(1), creditedA.body);
+// A fast RPC may confirm the tx before the early call returned "pending", in
+// which case the early call itself did the crediting and this second call
+// returns already_credited. Both paths prove "1 USDC gets 100 chips" — accept
+// either one, then require that 100 chips were credited by one of them.
+check(
+  '1.000000 credits 100 chips',
+  creditedA.body?.chips_credited === chipsFor(1) ||
+    (creditedA.body?.already_credited === true && early.body?.chips_credited === chipsFor(1)),
+  { creditedA: creditedA.body, early: early.body },
+);
 
 // --------------------------------------------------------------- A: replays
 
@@ -206,15 +215,21 @@ const sigB = await sendUsdc(connection, {
   reference: B.reference,
 });
 
-// Signature indexing lags confirmation slightly; give it a moment before
-// concluding the money is invisible.
-await sleep(4000);
-const rec = await play1({ action: 'reconcile' });
-const found = (rec.body?.credited ?? []).find((c) => c.intent_id === B.intent_id);
+// Signature indexing lags confirmation. On a slow RPC (Helius devnet under
+// load) it can take 20s+, so poll until it lands or we give up.
+let rec;
+let found;
+const started = Date.now();
+while (Date.now() - started < 30_000) {
+  await sleep(2500);
+  rec = await play1({ action: 'reconcile' });
+  found = (rec.body?.credited ?? []).find((c) => c.intent_id === B.intent_id);
+  if (found) break;
+}
 check(
   'reconciliation finds a payment the client never reported',
   found?.result?.chips_credited === chipsFor(0.37),
-  { reconcile: rec.body, sigB },
+  { reconcile: rec?.body, sigB, waited_ms: Date.now() - started },
 );
 
 // ------------------------------------------------------------------ totals
