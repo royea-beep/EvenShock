@@ -45,13 +45,21 @@ export interface Reveal {
   matchComplete: boolean;
 }
 
+/** The integrity failures a client can observe and is worth telling us about. */
+export type IntegrityKind =
+  | 'commitment_mismatch'
+  | 'outcome_disagreement'
+  | 'reveal_before_move';
+
 /** Thrown when the server contradicts itself. Never caught and swallowed. */
 export class FairnessError extends Error {
   readonly detail: string;
+  readonly kind: IntegrityKind;
 
-  constructor(message: string, detail: string) {
+  constructor(kind: IntegrityKind, message: string, detail: string) {
     super(message);
     this.name = 'FairnessError';
+    this.kind = kind;
     this.detail = detail;
   }
 }
@@ -102,6 +110,14 @@ export interface RoundsApi {
   openMatch(format: MatchFormat, theme: string | null, fastMode: boolean): Promise<string>;
   openRound(matchId: string): Promise<OpenRound>;
   submit(round: OpenRound, playerChoice: Choice): Promise<Reveal>;
+  /**
+   * Tells the server the client observed an integrity failure.
+   *
+   * Best effort and never throws: this is called on a path that is already
+   * going wrong, and a failed report must not become a second failure on top of
+   * the first. If it does not arrive, the player still sees the halt.
+   */
+  reportIntegrity(kind: IntegrityKind, detail: Record<string, unknown>): Promise<void>;
 }
 
 // ------------------------------------------------------------------ server
@@ -131,6 +147,7 @@ export function createServerRounds(client: SupabaseClient): RoundsApi {
       // answer before the player has moved.
       if ('opponent_choice' in data || 'nonce' in data) {
         throw new FairnessError(
+          'reveal_before_move',
           'The server revealed its move before you played.',
           'open_round response contained opponent_choice or nonce',
         );
@@ -163,13 +180,18 @@ export function createServerRounds(client: SupabaseClient): RoundsApi {
       const opponentChoice = data.opponent_choice;
       const nonce = data.nonce;
       if (!isChoice(opponentChoice) || typeof nonce !== 'string') {
-        throw new FairnessError('The reveal was malformed.', `payload: ${JSON.stringify(data)}`);
+        throw new FairnessError(
+          'commitment_mismatch',
+          'The reveal was malformed.',
+          `payload: ${JSON.stringify(data)}`,
+        );
       }
 
       // 1. Did the server play the move it committed to before it saw ours?
       const recomputed = await computeCommitment(opponentChoice, nonce);
       if (!commitmentMatches(recomputed, round.commitment)) {
         throw new FairnessError(
+          'commitment_mismatch',
           'The result could not be verified.',
           `round ${round.roundNumber}: committed ${round.commitment}, ` +
             `revealed ${opponentChoice} + nonce hashes to ${recomputed}`,
@@ -183,6 +205,7 @@ export function createServerRounds(client: SupabaseClient): RoundsApi {
       const ours = getRoundOutcome(playerChoice, opponentChoice);
       if (data.outcome !== ours) {
         throw new FairnessError(
+          'outcome_disagreement',
           'The server and this app disagree about who won.',
           `round ${round.roundNumber}: ${playerChoice} vs ${opponentChoice} — ` +
             `server said ${String(data.outcome)}, this app says ${ours}`,
@@ -199,6 +222,14 @@ export function createServerRounds(client: SupabaseClient): RoundsApi {
         },
         matchComplete: data.match_complete === true,
       };
+    },
+
+    async reportIntegrity(kind, detail) {
+      try {
+        await callPlay(client, { action: 'report_integrity', kind, detail });
+      } catch {
+        /* already handling a failure; do not raise a second one */
+      }
     },
   };
 }
@@ -258,6 +289,13 @@ export function createLocalRounds(): RoundsApi {
         score: { player: 0, opponent: 0 },
         matchComplete: false,
       };
+    },
+
+    async reportIntegrity() {
+      // Nothing to report. A guest "mismatch" would mean this browser
+      // disagreed with itself, which is a local bug, not evidence about a
+      // server — and sending it would put unverifiable noise in the table that
+      // looks exactly like the signal we care about.
     },
   };
 }

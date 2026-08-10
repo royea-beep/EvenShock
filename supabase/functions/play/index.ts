@@ -59,6 +59,7 @@ const ERROR_STATUS: Record<string, number> = {
   round_already_open: 409,
   already_submitted: 409,
   round_expired: 410,
+  rate_limited: 429,
   bad_request: 400,
 };
 
@@ -213,6 +214,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return await openRound(db, userId, body);
     case 'submit':
       return await submit(db, userId, body);
+    case 'report_integrity':
+      return await reportIntegrity(db, userId, body);
     default:
       return fail('bad_request', `Unknown action: ${String(body.action)}`, 400);
   }
@@ -230,27 +233,57 @@ function rpcError(data: Record<string, unknown> | null): Response | null {
 async function openMatch(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
   if (!isFormat(body.format)) return fail('bad_request', 'Unknown format', 400);
 
-  // Written at the start, when the result is genuinely unknown. status stays
-  // 'in_progress' until the server finalizes it, and the leaderboard counts
-  // only finalized matches — so walking out of a losing match records nothing
-  // rather than recording a win.
-  const { data, error } = await db
-    .from('matches')
-    .insert({
-      user_id: userId,
-      format: body.format,
-      player_score: 0,
-      opponent_score: 0,
-      result: null,
-      status: 'in_progress',
-      theme: typeof body.theme === 'string' ? body.theme : null,
-      fast_mode: body.fast_mode === true,
-    })
-    .select('id')
-    .single();
+  // An RPC rather than a direct insert, so the rate check happens in the same
+  // transaction as the write. A limit enforced in a separate call is a limit
+  // with a gap in it.
+  //
+  // The match is written at the start, when the result is genuinely unknown.
+  // status stays 'in_progress' until the server finalizes it, and the
+  // leaderboard counts only finalized matches — so walking out of a losing
+  // match records nothing rather than recording a win.
+  const { data, error } = await db.rpc('open_match', {
+    p_user_id: userId,
+    p_format: body.format,
+    p_theme: typeof body.theme === 'string' ? body.theme : null,
+    p_fast_mode: body.fast_mode === true,
+  });
+  if (error) return fail('db_error', error.message, 500);
 
-  if (error || !data) return fail('db_error', error?.message ?? 'Insert failed', 500);
-  return json({ match_id: data.id });
+  const refused = rpcError(data);
+  if (refused) return refused;
+
+  return json({ match_id: data.match_id });
+}
+
+// ----------------------------------------------------------- report_integrity
+
+/**
+ * The client telling us the server contradicted itself.
+ *
+ * A commitment mismatch is detected in the browser, which means without this
+ * channel the one signal that something is deeply wrong lands in a console
+ * nobody will ever read. Recorded as source='client' and never as fact — the
+ * caller controls the payload — but a burst of these across unrelated accounts
+ * is worth more than anything the server could notice on its own.
+ */
+async function reportIntegrity(
+  db: SupabaseClient,
+  userId: string,
+  body: Record<string, unknown>,
+) {
+  if (typeof body.kind !== 'string') return fail('bad_request', 'kind required', 400);
+
+  const { data, error } = await db.rpc('report_integrity', {
+    p_user_id: userId,
+    p_kind: body.kind,
+    p_detail: (body.detail ?? {}) as Record<string, unknown>,
+  });
+  if (error) return fail('db_error', error.message, 500);
+
+  const refused = rpcError(data);
+  if (refused) return refused;
+
+  return json({ ok: true });
 }
 
 // ---------------------------------------------------------------- open_round

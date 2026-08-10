@@ -134,10 +134,19 @@ export function useRounds(authenticated: boolean): RoundsState {
         p?.resolve(reveal.opponentChoice);
       } catch (err) {
         if (err instanceof FairnessError) {
-          // Loud, on purpose. This is the failure that would make every other
-          // guarantee here meaningless if it were swallowed.
+          // Loud in two directions. The console line is for whoever is holding
+          // the device; the report is the half that reaches us, because a
+          // console in a stranger's browser is the one place we can never look.
           // eslint-disable-next-line no-console
           console.error('[evenshock] FAIRNESS CHECK FAILED —', err.message, '\n', err.detail);
+          void api.reportIntegrity(err.kind, {
+            match_id: committed.matchId,
+            round_id: committed.round.roundId,
+            round_number: committed.round.roundNumber,
+            commitment: committed.round.commitment,
+            player_choice: committed.choice,
+            detail: err.detail,
+          });
           setTrouble({ kind: 'fairness', detail: err.detail });
           return; // seam stays pending: the match must not continue
         }

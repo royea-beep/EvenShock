@@ -106,6 +106,15 @@ export const copy = {
     refusedTitle: 'This round has closed',
     refusedBody: 'It expired before your move arrived. Nothing was counted.',
 
+    /**
+     * A legitimate player cannot reach the rate limit — the animation alone
+     * puts a floor of about a second on a round. So this wording assumes a bug
+     * on our side rather than scolding someone who did nothing wrong.
+     */
+    rateLimitedTitle: 'Too many rounds too quickly',
+    rateLimitedBody:
+      "Play is paused for a moment. If you were playing normally, this shouldn't have happened — please tell us.",
+
     /** Deliberately blunt. This one means the server contradicted itself. */
     fairnessTitle: 'This result could not be verified',
     fairnessBody:

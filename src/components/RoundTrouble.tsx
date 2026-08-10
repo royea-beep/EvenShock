@@ -74,7 +74,9 @@ export function RoundTrouble({ trouble, onRetry, onLeave }: Props) {
                 {fairness
                   ? copy.trouble.fairnessTitle
                   : trouble.kind === 'refused'
-                    ? copy.trouble.refusedTitle
+                    ? trouble.code === 'rate_limited'
+                      ? copy.trouble.rateLimitedTitle
+                      : copy.trouble.refusedTitle
                     : copy.trouble.offlineTitle}
               </h2>
 
@@ -82,7 +84,9 @@ export function RoundTrouble({ trouble, onRetry, onLeave }: Props) {
                 {fairness
                   ? copy.trouble.fairnessBody
                   : trouble.kind === 'refused'
-                    ? copy.trouble.refusedBody
+                    ? trouble.code === 'rate_limited'
+                      ? copy.trouble.rateLimitedBody
+                      : copy.trouble.refusedBody
                     : copy.trouble.offlineBody}
               </p>
 
