@@ -1,9 +1,11 @@
-export type Choice = 'rock' | 'paper' | 'scissors';
-
-export type MatchFormat = 'single' | 'bo3' | 'bo5';
-
-/** Outcome from the local player's point of view. */
-export type RoundOutcome = 'win' | 'lose' | 'tie';
+/**
+ * `Choice`, `RoundOutcome`, `MatchFormat` and `Score` are re-exported from
+ * `utils/rules.ts` rather than declared here. That file is the one the Edge
+ * Function also runs, so the move vocabulary the server validates against and
+ * the one the UI renders are the same declaration, not two that happen to
+ * match today.
+ */
+export type { Choice, RoundOutcome, MatchFormat, Score } from '../utils/rules';
 
 export type MatchStatus = 'idle' | 'playing' | 'complete';
 
@@ -13,8 +15,3 @@ export type MatchStatus = 'idle' | 'playing' | 'complete';
  * hands stay mounted through the reveal snap instead of being swapped out.
  */
 export type Screen = 'home' | 'round' | 'matchEnd';
-
-export interface Score {
-  player: number;
-  opponent: number;
-}

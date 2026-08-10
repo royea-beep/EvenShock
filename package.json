@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "themes:separation": "node scripts/theme-separation.mjs"
+    "themes:separation": "node scripts/theme-separation.mjs",
+    "sync:rules": "node scripts/sync-rules.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
