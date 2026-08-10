@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabase } from '../data/supabaseClient';
+import { themePrice } from '../utils/economy';
 import {
   EMPTY_ECONOMY,
   createLocalEconomy,
@@ -87,6 +88,25 @@ export function useEconomy(authenticated: boolean, currentTheme: string | null):
   const buy = useCallback(
     async (sku: string): Promise<boolean> => {
       setBuyError(null);
+
+      // Refuse locally what the server would refuse anyway.
+      //
+      // The price and the balance are both already here, so sending the request
+      // buys nothing but a round trip and a 409 in the player's console that
+      // looks like a fault rather than "you cannot afford this yet". This is a
+      // convenience check and NOT the enforcement — spend_chips still takes the
+      // balance row lock and re-checks, because a client-side guard protects
+      // nobody from a client.
+      const price = themePrice(sku);
+      if (price === null) {
+        setBuyError('bad_request');
+        return false;
+      }
+      if (state.chips < price) {
+        setBuyError('insufficient_chips');
+        return false;
+      }
+
       try {
         const result = await api.buy(sku);
         setState((prev) => ({
@@ -100,7 +120,7 @@ export function useEconomy(authenticated: boolean, currentTheme: string | null):
         return false;
       }
     },
-    [api],
+    [api, state.chips],
   );
 
   const owns = useCallback((sku: string) => state.owned.includes(sku), [state.owned]);

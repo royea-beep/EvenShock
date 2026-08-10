@@ -37,6 +37,7 @@ export function useAuth(): AuthState {
     isSupabaseConfigured() ? 'guest' : 'unconfigured',
   );
   const [error, setError] = useState<string | null>(null);
+  const [profileAddress, setProfileAddress] = useState<string | null>(null);
 
   useEffect(() => {
     if (!client) return;
@@ -56,6 +57,7 @@ export function useAuth(): AuthState {
       setStatus(next ? 'authenticated' : 'guest');
       // Any subsequent change clears a stale error banner.
       setError(null);
+      if (!next) setProfileAddress(null);
     });
 
     return () => {
@@ -95,15 +97,39 @@ export function useAuth(): AuthState {
     setStatus('guest');
   }, [client]);
 
-  // Address is derived from the session, not tracked separately: session is
-  // the source of truth, and a mismatch here would be a bug.
-  const address =
-    session?.user.user_metadata?.address ??
-    session?.user.user_metadata?.wallet_address ??
-    session?.user.identities?.[0]?.identity_data?.address ??
-    session?.user.identities?.[0]?.identity_data?.wallet_address ??
-    session?.user.identities?.[0]?.identity_data?.sub ??
-    null;
+  /**
+   * The wallet address comes from `profiles.wallet_address`, not from the
+   * session.
+   *
+   * Supabase's Web3 provider namespaces the identity as
+   * `web3:solana:<address>`, and the session carries that verbatim — which is
+   * why the button read `web3…BSRF` instead of `D9bz…BSRF`. The normalised
+   * address already exists: the provisioning trigger strips the namespace and
+   * stores the bare value, and there is a backfill for the rows written before
+   * that. So this reads the value the server settled on rather than re-deriving
+   * it, and there is no prefix-stripping in the UI to drift from the trigger.
+   *
+   * RLS scopes the row to the caller, so no user filter is needed here.
+   */
+  useEffect(() => {
+    if (!client || !session) return;
+    let cancelled = false;
+    void client
+      .from('profiles')
+      .select('wallet_address')
+      .single()
+      .then(({ data }) => {
+        if (!cancelled && data?.wallet_address) setProfileAddress(data.wallet_address);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, session]);
+
+  // Deliberately NOT falling back to the session's namespaced identity: showing
+  // a wrong-but-present address is worse than showing none for the moment
+  // between signing in and the profile arriving.
+  const address = profileAddress;
 
   return { status, session, address, error, connect, disconnect: doDisconnect };
 }
