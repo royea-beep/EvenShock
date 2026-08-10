@@ -69,6 +69,9 @@ const ERROR_STATUS: Record<string, number> = {
   cluster_mismatch: 409,
   payment_mismatch: 409,
   payment_failed: 409,
+  // A mint whose authority the devnet harness holds, named by a mainnet config.
+  // 403 rather than 409: no retry of this request turns into a success.
+  test_mint_on_mainnet: 403,
 };
 
 const isChoice = (v: unknown): v is Choice => CHOICES.includes(v as Choice);
@@ -802,7 +805,9 @@ async function reconcile(db: SupabaseClient, userId: string) {
       reference: row.reference,
       treasury_address: row.treasury_address,
       usdc_mint: row.usdc_mint,
-      usdc_decimals: 6,
+      // From the intent's frozen copy, not a literal. This scales the amount,
+      // so guessing it wrong credits a player a thousand times what they paid.
+      usdc_decimals: row.usdc_decimals,
     };
 
     for (const s of sigs) {

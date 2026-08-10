@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "themes:separation": "node scripts/theme-separation.mjs",
-    "sync:rules": "node scripts/sync-rules.mjs"
+    "sync:rules": "node scripts/sync-rules.mjs",
+    "devnet:setup": "node scripts/devnet/setup.mjs",
+    "devnet:e2e": "node scripts/devnet/e2e.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
@@ -20,6 +22,8 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.98.4",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
@@ -28,6 +32,7 @@
     "oxlint": "^1.75.0",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.3.3",
+    "tweetnacl": "^1.0.3",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"

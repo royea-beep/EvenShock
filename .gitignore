@@ -160,3 +160,9 @@ assets-src/
 
 # Screenshots written by scripts/shot-picker.mjs while auditing tiles.
 picker-shots/
+
+# Devnet payment harness: keypairs, mint address, and the last run's report.
+# The payer here holds the mint authority for a test currency, which is exactly
+# why it is a local file and not a deployed secret — the Edge Function must
+# never be able to originate a payment, even a fake one.
+.devnet/
