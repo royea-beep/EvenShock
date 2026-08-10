@@ -90,4 +90,27 @@ export const copy = {
     confirmLeave: 'Leave match',
     confirmStay: 'Keep playing',
   },
+  /**
+   * Shown when a round cannot be settled. Every line names what happened to the
+   * player's MOVE, because that is the thing they are worried about — a round
+   * that hangs after you have committed feels like the game took something.
+   */
+  trouble: {
+    retryingTitle: 'Still waiting',
+    retryingBody: 'Your move is locked in. Reaching the server…',
+
+    offlineTitle: "Can't reach the server",
+    offlineBody: 'Your move is safe and this round is still open. Try again when you have signal.',
+    offlineRetry: 'Try again',
+
+    refusedTitle: 'This round has closed',
+    refusedBody: 'It expired before your move arrived. Nothing was counted.',
+
+    /** Deliberately blunt. This one means the server contradicted itself. */
+    fairnessTitle: 'This result could not be verified',
+    fairnessBody:
+      'The server did not play the move it committed to before you chose. This match has been stopped and will not be counted. Please report it.',
+
+    leaveMatch: 'Leave match',
+  },
 } as const;

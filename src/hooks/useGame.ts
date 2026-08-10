@@ -12,8 +12,18 @@ interface UseGameOptions {
    * bot. Swap this for a function that reads a real opponent's move off a
    * Supabase Realtime `matches` row to go multiplayer — the rest of the hook
    * (and every screen built on it) is unaware of where the choice came from.
+   *
+   * Receives the player's move because commit-reveal needs it: the server has
+   * already committed to its own move, and the player's is what unlocks the
+   * reveal. This is the hook's only concession to the server being
+   * authoritative — the return value is still just a Choice.
+   *
+   * MAY STAY PENDING. The resolver owns retries and failure messaging, and the
+   * round screen derives its phase from state rather than a timer, so an
+   * unresolved promise holds the wind-up instead of desyncing it. It must never
+   * REJECT: nothing here would catch it.
    */
-  resolveOpponentChoice?: () => Choice | Promise<Choice>;
+  resolveOpponentChoice?: (playerChoice: Choice) => Choice | Promise<Choice>;
 }
 
 export function useGame({ resolveOpponentChoice = getBotChoice }: UseGameOptions = {}) {
@@ -51,7 +61,7 @@ export function useGame({ resolveOpponentChoice = getBotChoice }: UseGameOptions
       setRoundResult(null);
 
       revealTimer.current = setTimeout(async () => {
-        const opponentChoice = await resolveOpponentChoice();
+        const opponentChoice = await resolveOpponentChoice(choice);
         const outcome = getRoundOutcome(choice, opponentChoice);
 
         setBotChoice(opponentChoice);

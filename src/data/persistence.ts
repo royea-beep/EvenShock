@@ -1,41 +1,32 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Choice, MatchFormat, RoundOutcome } from '../types/game';
+import type { MatchFormat, RoundOutcome } from '../types/game';
 
 /**
- * The client's storage seam. useGame is a protected file and stores nothing;
- * writing history is a separate concern that lives here. useMatchPersistence
- * calls into this interface when a match completes.
+ * The client's READ seam for history.
  *
- * The interface is deliberately narrow: recording is fire-and-forget from the
- * caller's point of view (errors are logged, not surfaced — a failed write
- * cannot block the next round), and reads are for surfaces that don't exist
- * yet (a personal history panel and the leaderboard). Guest mode returns
- * empty arrays for reads and no-ops for writes so callers don't need to
- * branch on auth state to render.
+ * It used to write too. It cannot any more, and not because this file stopped
+ * calling insert: `authenticated` holds no INSERT grant on `matches` or
+ * `rounds`, and no policy would help if it did. Matches are written by the
+ * `play` Edge Function, which is also the only thing that decides outcomes.
+ * Adding a write back here would fail at the database, which is the point.
+ *
+ * Guest mode returns empty arrays so callers don't branch on auth state.
  *
  * Column names mirror the schema in supabase/migrations/ exactly, so the row
  * shape flowing through this file is the row shape the database stores.
  */
 
-export interface MatchRecordInput {
+export interface MatchRecord {
+  id: string;
+  created_at: string;
   format: MatchFormat;
   player_score: number;
   opponent_score: number;
-  result: RoundOutcome; // 'win' | 'lose' | 'tie'
+  /** Null while a match is still in progress; the server fills it on finalize. */
+  result: RoundOutcome | null;
+  status: 'in_progress' | 'complete' | 'abandoned';
   theme: string | null;
   fast_mode: boolean;
-}
-
-export interface RoundRecordInput {
-  round_number: number;
-  player_choice: Choice;
-  opponent_choice: Choice;
-  outcome: RoundOutcome;
-}
-
-export interface MatchRecord extends MatchRecordInput {
-  id: string;
-  created_at: string;
 }
 
 export interface LeaderRow {
@@ -50,9 +41,8 @@ export interface LeaderRow {
 }
 
 export interface Persistence {
-  /** Whether this backend actually persists anything. Guest returns false. */
+  /** Whether this backend reads anything real. Guest returns false. */
   readonly persists: boolean;
-  recordMatch(match: MatchRecordInput, rounds: RoundRecordInput[]): Promise<void>;
   loadRecentMatches(limit?: number): Promise<MatchRecord[]>;
   loadLeaderboard(limit?: number): Promise<LeaderRow[]>;
 }
@@ -72,9 +62,6 @@ export interface Persistence {
 export function createGuestPersistence(): Persistence {
   return {
     persists: false,
-    async recordMatch() {
-      /* no-op */
-    },
     async loadRecentMatches() {
       return [];
     },
@@ -87,45 +74,29 @@ export function createGuestPersistence(): Persistence {
 // ------------------------------------------------------------------ supabase
 
 /**
- * Supabase-backed persistence. Everything here relies on the RLS policies in
- * supabase/migrations/20260809113400_rls_and_column_grants.sql — user_id and
- * created_at are server-defaulted, so the client cannot backdate a match or
- * attribute it to another account even if this code got it wrong.
+ * Supabase-backed reads. RLS scopes every row to the caller
+ * (supabase/migrations/20260809113400_rls_and_column_grants.sql), so no query
+ * here filters by user id — the database does it, and a missing filter cannot
+ * turn into a leak.
+ *
+ * There is no `rounds` read: the client has no SELECT grant on that table,
+ * because it holds the server's drawn move and the nonce for any round still
+ * open. A per-round history panel needs a SECURITY DEFINER function returning
+ * resolved rounds only, not a restored grant.
  */
 export function createSupabasePersistence(client: SupabaseClient): Persistence {
   return {
     persists: true,
 
-    async recordMatch(match, rounds) {
-      // Insert the match first so rounds can reference its id. Grants scope
-      // this insert to (format, player_score, opponent_score, result, theme,
-      // fast_mode) — user_id is defaulted by the server.
-      const { data: inserted, error: matchErr } = await client
-        .from('matches')
-        .insert(match)
-        .select('id')
-        .single();
-      if (matchErr || !inserted) {
-        // Deliberately swallow: a failed write must not disrupt gameplay.
-        // The audit story lives in Supabase logs, not client-side toasts.
-        // eslint-disable-next-line no-console
-        console.warn('[persistence] recordMatch: match insert failed', matchErr);
-        return;
-      }
-
-      if (rounds.length === 0) return;
-      const rows = rounds.map((r) => ({ ...r, match_id: inserted.id }));
-      const { error: roundsErr } = await client.from('rounds').insert(rows);
-      if (roundsErr) {
-        // eslint-disable-next-line no-console
-        console.warn('[persistence] recordMatch: rounds insert failed', roundsErr);
-      }
-    },
-
     async loadRecentMatches(limit = 20) {
       const { data, error } = await client
         .from('matches')
-        .select('id, created_at, format, player_score, opponent_score, result, theme, fast_mode')
+        .select(
+          'id, created_at, format, player_score, opponent_score, result, status, theme, fast_mode',
+        )
+        // Unfinished matches are not history — they are a match someone walked
+        // out of, and the leaderboard ignores them too.
+        .eq('status', 'complete')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error || !data) return [];

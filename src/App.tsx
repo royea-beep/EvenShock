@@ -7,8 +7,7 @@ import { useRoundHistory } from './hooks/useRoundHistory';
 import { useMuted } from './hooks/useMuted';
 import { useFastMode } from './hooks/useFastMode';
 import { useAuth } from './hooks/useAuth';
-import { usePersistence } from './hooks/usePersistence';
-import { useMatchPersistence } from './hooks/useMatchPersistence';
+import { useRounds } from './hooks/useRounds';
 import { usePrefsMigration } from './hooks/usePrefsMigration';
 import { getScreen } from './utils/getScreen';
 import { unlockAudio } from './utils/sound';
@@ -19,12 +18,18 @@ import { MuteToggle } from './components/MuteToggle';
 import { FastModeToggle } from './components/FastModeToggle';
 import { LeaveMatchControl } from './components/LeaveMatchControl';
 import { WalletButton } from './components/WalletButton';
+import { RoundTrouble } from './components/RoundTrouble';
 // TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
 import { ImpactVariantBadge } from './components/ImpactVariantBadge';
 import { IMPACT_VARIANT } from './utils/impactVariant';
 
 function App() {
-  const game = useGame();
+  const auth = useAuth();
+  // Rounds are resolved by the server for a signed-in player and by a local
+  // draw for a guest — same interface, same async shape, same failure paths.
+  // See useRounds: guest mode is not a second, simpler game.
+  const rounds = useRounds(auth.status === 'authenticated');
+  const game = useGame({ resolveOpponentChoice: rounds.resolveOpponentChoice });
   const screen = getScreen(game);
   const { muted, toggleMuted } = useMuted();
   const { fast, toggleFast, setFast } = useFastMode();
@@ -34,21 +39,10 @@ function App() {
   const history = useRoundHistory(game);
   const reducedMotion = useReducedMotion();
 
-  // Auth + persistence sit OUTSIDE useGame. useGame stores nothing, and this
-  // is the layer that watches its state and writes finished matches to the
-  // backend when the player is authenticated. Guests get a no-op backend so
-  // no branching is needed at the call site.
-  const auth = useAuth();
-  const persistence = usePersistence(auth.status === 'authenticated');
-  useMatchPersistence(persistence, {
-    matchStatus: game.matchStatus,
-    matchWinner: game.matchWinner,
-    format: game.format,
-    score: game.score,
-    history,
-    theme,
-    fast,
-  });
+  // NOTE: `usePersistence` is read-only now and nothing renders history yet, so
+  // it is not called here. Matches are written by the `play` Edge Function,
+  // which is also the only thing that decides outcomes — the client holds no
+  // INSERT grant on `matches` or `rounds`, so there is no write path to keep.
 
   // On first sign-in: copy localStorage prefs to profiles for columns that
   // are null, and apply profile prefs to app state for columns that aren't.
@@ -118,9 +112,35 @@ function App() {
     }
   }, [game.roundResult, game.roundNumber, reducedMotion, fast, deciding, shakeControls]);
 
+  /**
+   * Fetch the next round's commitment while the player is reading, never while
+   * they are waiting.
+   *
+   * The condition is "we are on the round screen and no move is committed yet",
+   * which covers both the gap before the first pick and the result screen
+   * between rounds. That is seconds of human reading time, so the commitment is
+   * already in hand when the tap comes — and it is why a cold Edge Function
+   * instance (~1.2s) delays starting a match instead of stalling a reveal.
+   */
+  useEffect(() => {
+    if (game.matchStatus !== 'playing') return;
+    if (game.playerChoice !== null) return;
+    rounds.prefetch();
+  }, [game.matchStatus, game.playerChoice, game.roundNumber, rounds]);
+
   const handleStart = () => {
     unlockAudio(); // warm the audio context from a real user gesture
+    // Opens the match server-side and prefetches round 1 before the round
+    // screen is even interactive.
+    rounds.beginMatch(game.format, theme, fast);
     game.startMatch();
+  };
+
+  /** Leaving abandons the server-side match too: it stays in_progress, and the
+   *  leaderboard counts only finalized matches. */
+  const handleLeave = () => {
+    rounds.reset();
+    game.playAgain();
   };
 
   return (
@@ -132,9 +152,11 @@ function App() {
 
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
           which getScreen maps to 'home', and deliberately keeps `format`. */}
+      <RoundTrouble trouble={rounds.trouble} onRetry={rounds.retry} onLeave={handleLeave} />
+
       {screen !== 'home' && (
         <LeaveMatchControl
-          onLeave={game.playAgain}
+          onLeave={handleLeave}
           // Mid-match with points on the board, leaving costs something. On the
           // match-end screen it costs nothing, so don't ask.
           confirmFirst={screen === 'round' && game.score.player + game.score.opponent > 0}
@@ -205,8 +227,8 @@ function App() {
                 // Straight into another match on the same theme and format.
                 // startMatch already performs the full reset, which is also what
                 // clears the derived history.
-                onPlayAgain={game.startMatch}
-                onChangeLook={game.playAgain}
+                onPlayAgain={handleStart}
+                onChangeLook={handleLeave}
               />
             )}
           </AnimatePresence>

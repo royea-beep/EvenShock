@@ -3,12 +3,17 @@ import type { Choice } from '../types/game';
 const CHOICES: readonly Choice[] = ['rock', 'paper', 'scissors'];
 
 /**
- * Resolves the opponent's move for a round. Pure random for now.
+ * The GUEST opponent's move.
  *
- * Isolated behind this single export so the multiplayer version (reading a
- * real opponent's move from a Supabase Realtime `matches` row instead of
- * rolling one locally) can replace the implementation — or be swapped in via
- * the `resolveOpponentChoice` param on `useGame` — without any UI changes.
+ * This is no longer how a signed-in player's rounds are decided. Those are
+ * drawn server-side with `crypto.getRandomValues` and committed to before the
+ * player moves — see supabase/functions/play. `Math.random()` in the client was
+ * exactly the thing that made results forgeable.
+ *
+ * It survives as the local draw behind `createLocalRounds`, which is guest mode
+ * only: nothing a guest plays is recorded or ranked, so there is nothing here
+ * worth tampering with. Both paths go through the same `resolveOpponentChoice`
+ * seam so guest play exercises the identical state machine.
  */
 export function getBotChoice(): Choice {
   return CHOICES[Math.floor(Math.random() * CHOICES.length)];

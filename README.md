@@ -155,19 +155,36 @@ Artwork carries the move name as `alt` text; when a theme has no art set, the ac
 - A tie does not count toward the score — both players immediately pick again. That rule lives as a single named flag, `TIES_COUNT_TOWARD_SCORE`, in `utils/gameLogic.ts`, so it's a one-line change if that behavior should ever differ.
 - Match formats: Single Round, Best of 3, Best of 5 (first to the majority of wins).
 
-## Designed for a future multiplayer swap
+## The server decides rounds
 
-Right now the opponent's move comes from `utils/getBotChoice.ts` — pure `Math.random()` across the three choices. Nothing else in the app calls `Math.random()` or knows the opponent is a bot.
+For a signed-in player, the opponent's move is drawn by the `play` Edge Function with `crypto.getRandomValues`, and the result is written by the server. The client holds no INSERT grant on `matches` or `rounds`, so it cannot report a win it did not earn.
 
-`useGame()` accepts an optional `resolveOpponentChoice` function (defaulting to `getBotChoice`):
+Rock-paper-scissors is simultaneous, so the protocol is commit-reveal:
+
+1. `open_round` draws a move, stores it with a 32-byte nonce, and returns **only** `sha256(move ‖ nonce)`.
+2. The player picks. `submit` records that move, then reveals the server's move and the nonce.
+3. The client re-hashes and checks it against the commitment it was handed *before* it moved.
+
+If the hash does not match, or if the server's outcome disagrees with the client's own reading of the same rules, the match halts with a visible error and is not continued. Both failures are treated identically — see `data/rounds.ts`.
+
+**The commitment is fetched before the player picks**, at match start and then during each result screen. That keeps the only in-band call inside the ~870ms build-up, and means a cold function instance (~1.2s) delays *starting a match* rather than stalling a reveal.
+
+### One copy of the rules
+
+`utils/rules.ts` is the single source of truth and runs in both places — the browser imports it, and `npm run sync:rules` copies it verbatim to `supabase/functions/play/rules.ts`. A test fails if the copy is stale, and a hand-written nine-pair truth table fails if the canonical file is wrong. SQL holds no rules either: `resolve_round` is *handed* the nine-pair table and looks the answer up.
+
+### The seam
+
+`useGame()` still takes `resolveOpponentChoice`, now receiving the player's move (commit-reveal needs it) and still returning a `Choice`:
 
 ```ts
-useGame({ resolveOpponentChoice: getBotChoice }); // today
-useGame({ resolveOpponentChoice: readOpponentMoveFromSupabase }); // later
+useGame({ resolveOpponentChoice: rounds.resolveOpponentChoice });
 ```
 
-That function can return a `Promise<Choice>`, so a real implementation can `await` a Realtime payload instead of resolving instantly — `useGame` already awaits the result before computing the round outcome, so no UI code needs to change.
+The returned promise **may stay pending**. The round screen derives its phase from state rather than a timer, so a late answer holds the wind-up instead of desyncing it — which is also the whole latency strategy. It is never rejected; `useRounds` owns retries and messaging.
 
-`useGame`'s state is also already shaped like a future Supabase row: `playerChoice` / `botChoice` map to `player_choice` / `opponent_choice`, `matchStatus` maps to `status`, and `format` is `format` as-is. Lifting local state into a Realtime-backed `matches` table later should be a contained change to `useGame` and `getBotChoice`'s replacement, not a rewrite of the screens.
+`submit` is idempotent on `(round_id, move)`: the same move replays the same reveal, a different move for a resolved round is refused. That is what makes retrying after a dropped response safe, and it is why a retry does not look like cheating.
 
-No backend, auth, or Supabase client is wired up in this version — that's deliberately out of scope for now.
+### Guests
+
+Guest play uses a local draw behind the identical interface, including a locally generated commitment. That commitment **verifies nothing** — the same process makes both halves — and `verifiable` is `false` so nothing user-facing can ever claim provable fairness for a guest. It exists so guest play exercises the same async, verification and failure paths rather than being a second, simpler game that rots unnoticed.
