@@ -57,7 +57,7 @@ let sol = (await connection.getBalance(payer.publicKey)) / LAMPORTS_PER_SOL;
 if (sol < MIN_SOL) {
   console.log(`  payer has ${sol} SOL, airdropping…`);
   try {
-    const sig = await connection.requestAirdrop(payer.publicKey, 2 * LAMPORTS_PER_SOL);
+    const sig = await connection.requestAirdrop(payer.publicKey, 1 * LAMPORTS_PER_SOL);
     await connection.confirmTransaction(sig, 'confirmed');
     sol = (await connection.getBalance(payer.publicKey)) / LAMPORTS_PER_SOL;
   } catch (err) {
