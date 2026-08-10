@@ -36,6 +36,7 @@ import {
   type Choice,
   type MatchFormat,
 } from './rules.ts';
+import { PRICED_THEMES, economyRates, themePrice } from './economy.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -73,6 +74,69 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 // shared rules file, so they are built once rather than per request.
 const OUTCOMES = outcomeTable();
 const WINS_NEEDED = winsNeededTable();
+const ECONOMY = economyRates();
+
+// -------------------------------------------------------- per-IP circuit breaker
+//
+// WHAT THIS IS NOT: a way to stop garbage requests costing invocations. By the
+// time this code runs the function has already been invoked and already billed;
+// nothing inside it can undo that. Only something upstream of the runtime could,
+// and that is not ours to configure. Saying so plainly because a limiter here
+// looks like it solves the billing problem and does not.
+//
+// WHAT IT IS: a circuit breaker that stops a flooding address from making us do
+// work. An address that keeps failing authentication gets short-circuited BEFORE
+// the JWKS lookup, so a burst of forged tokens cannot drag the key fetch or the
+// signature check along with it.
+//
+// Only FAILED authentications count. Legitimate players never accumulate, which
+// matters because mobile carriers put thousands of real users behind one address
+// — an IP limit that counted successful requests would eventually punish a
+// carrier NAT for being popular.
+//
+// Deliberately in memory: a database write per garbage request would itself be
+// the denial of service. Honest limits — per instance, so concurrent instances
+// multiply it, it resets on cold start, and a distributed flood walks straight
+// past it. It bounds the cheap case, which is the one that actually shows up.
+const IP_FAILURE_WINDOW_MS = 60_000;
+const IP_FAILURE_BUDGET = 20;
+const IP_TABLE_CAP = 5_000;
+
+const authFailures = new Map<string, { count: number; resetAt: number }>();
+
+function clientIp(req: Request): string {
+  const forwarded = req.headers.get('x-forwarded-for') ?? '';
+  return forwarded.split(',')[0].trim() || 'unknown';
+}
+
+/** True when this address has already burned its failure budget. */
+function ipOverBudget(ip: string): boolean {
+  const entry = authFailures.get(ip);
+  if (!entry) return false;
+  if (Date.now() >= entry.resetAt) {
+    authFailures.delete(ip);
+    return false;
+  }
+  return entry.count > IP_FAILURE_BUDGET;
+}
+
+function noteAuthFailure(ip: string): void {
+  const now = Date.now();
+  const entry = authFailures.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    authFailures.set(ip, { count: 1, resetAt: now + IP_FAILURE_WINDOW_MS });
+  } else {
+    entry.count += 1;
+  }
+
+  // A spray of forged addresses must not grow this without bound.
+  if (authFailures.size > IP_TABLE_CAP) {
+    for (const [key, value] of authFailures) {
+      if (now >= value.resetAt) authFailures.delete(key);
+    }
+    if (authFailures.size > IP_TABLE_CAP) authFailures.clear();
+  }
+}
 
 // ------------------------------------------------------------------- auth
 //
@@ -95,14 +159,22 @@ interface Jwk {
 }
 
 let jwksCache: Promise<Jwk[]> | null = null;
+let jwksRetryAfter = 0;
 
 function fetchJwks(): Promise<Jwk[]> {
   if (!jwksCache) {
+    // Back off after a failure. Without this, clearing the cache on error turns
+    // a flood of well-formed-but-forged tokens into a flood of OUTBOUND key
+    // fetches — one per request — which is a worse problem than the one being
+    // defended against, and one we would be inflicting on ourselves.
+    if (Date.now() < jwksRetryAfter) return Promise.resolve([]);
+
     jwksCache = fetch(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
       .then((r) => r.json())
       .then((doc) => (Array.isArray(doc?.keys) ? (doc.keys as Jwk[]) : []))
       .catch((e) => {
         jwksCache = null; // a failed fetch must not poison the instance
+        jwksRetryAfter = Date.now() + 5_000;
         throw e;
       });
   }
@@ -189,8 +261,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return fail('method_not_allowed', 'POST only', 405);
 
+  // Checked before verification so a flooding address cannot drag the key
+  // lookup and signature check along with it. Only failures accumulate here.
+  const ip = clientIp(req);
+  if (ipOverBudget(ip)) {
+    return fail('rate_limited', 'Too many failed authentications from this address', 429);
+  }
+
   const userId = await verifiedUserId(req.headers.get('Authorization') ?? '');
-  if (!userId) return fail('unauthenticated', 'Invalid or missing session', 401);
+  if (!userId) {
+    noteAuthFailure(ip);
+    return fail('unauthenticated', 'Invalid or missing session', 401);
+  }
 
   let body: Record<string, unknown>;
   try {
@@ -216,6 +298,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return await submit(db, userId, body);
     case 'report_integrity':
       return await reportIntegrity(db, userId, body);
+    case 'economy_state':
+      return await economyState(db, userId, body);
+    case 'buy':
+      return await buy(db, userId, body);
+    case 'health':
+      return await health(db, userId);
     default:
       return fail('bad_request', `Unknown action: ${String(body.action)}`, 400);
   }
@@ -331,6 +419,9 @@ async function submit(db: SupabaseClient, userId: string, body: Record<string, u
     p_player_move: body.player_choice,
     p_outcomes: OUTCOMES,
     p_wins_needed: WINS_NEEDED,
+    // Rates, not amounts. The multiplication happens inside the transaction
+    // that finalises the match, so a match is never complete-but-unpaid.
+    p_economy: ECONOMY,
   });
   if (error) return fail('db_error', error.message, 500);
 
@@ -340,5 +431,79 @@ async function submit(db: SupabaseClient, userId: string, body: Record<string, u
   // Fixed field set, every field always present, always 200. No byte padding —
   // once this response lands the client holds the answer regardless, and the
   // player's move is already committed, so uniform length buys nothing.
+  return json(data);
+}
+
+// -------------------------------------------------------------- economy_state
+
+/**
+ * Balances and owned cosmetics.
+ *
+ * Also the one place the "never lock what someone is already using" rule is
+ * applied: the caller passes its current theme, and if that theme is priced but
+ * unowned it is granted rather than taken away. The price list travels from the
+ * shared module so the server decides what is priced — a client that could name
+ * its own priced set could grant itself anything.
+ */
+async function economyState(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
+  const current = typeof body.current_theme === 'string' ? body.current_theme : null;
+
+  const { data, error } = await db.rpc('economy_state', {
+    p_user_id: userId,
+    p_current_theme: current,
+    p_priced: PRICED_THEMES,
+  });
+  if (error) return fail('db_error', error.message, 500);
+
+  const refused = rpcError(data);
+  if (refused) return refused;
+
+  return json(data);
+}
+
+// ----------------------------------------------------------------------- buy
+
+/**
+ * Spends chips on a cosmetic.
+ *
+ * The PRICE IS NOT TAKEN FROM THE REQUEST. It comes from the shared module by
+ * sku, because a client that names its own price can buy anything for one chip.
+ * Obvious, and exactly the kind of thing that is obvious right up until someone
+ * ships it.
+ */
+async function buy(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
+  const sku = body.sku;
+  if (typeof sku !== 'string') return fail('bad_request', 'sku required', 400);
+
+  const price = themePrice(sku);
+  if (price === null) return fail('bad_request', 'Not for sale', 400);
+
+  const { data, error } = await db.rpc('spend_chips', {
+    p_user_id: userId,
+    p_sku: sku,
+    p_price: price,
+  });
+  if (error) return fail('db_error', error.message, 500);
+
+  const refused = rpcError(data);
+  if (refused) return refused;
+
+  return json(data);
+}
+
+// -------------------------------------------------------------------- health
+
+/**
+ * The integrity digest. Owner only — the RPC checks `profiles.is_owner` and
+ * returns `forbidden` otherwise, so this endpoint tells an ordinary player
+ * nothing at all about how the system is doing.
+ */
+async function health(db: SupabaseClient, userId: string) {
+  const { data, error } = await db.rpc('health_digest', { p_user_id: userId });
+  if (error) return fail('db_error', error.message, 500);
+
+  const refused = rpcError(data);
+  if (refused) return refused;
+
   return json(data);
 }

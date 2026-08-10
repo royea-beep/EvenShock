@@ -1,36 +1,49 @@
 /**
- * Copies the canonical rules into the Edge Function, byte for byte.
+ * Copies the shared modules into the Edge Function, byte for byte.
  *
- * The server decides round outcomes and the client cross-checks them, so the
- * two must run identical logic. Rather than trust that two hand-maintained
- * copies stay in step, there is one file and a copy of it, and
- * `rules.sync.test.ts` fails the build if the copy is stale.
+ * Two files travel this path, for the same reason each time — the server and the
+ * browser must agree, and two hand-maintained copies eventually will not:
  *
- * Run after editing src/utils/rules.ts:  npm run sync:rules
+ *   rules.ts    the server decides round outcomes, the client cross-checks them
+ *   economy.ts  the server credits balances, the guest demo shows the same
+ *               numbers locally; different numbers would make the demo a lie
+ *               about the loop it exists to demonstrate
+ *
+ * `rules.sync.test.ts` fails the build if either copy is stale.
+ *
+ * Run after editing either canonical file:  npm run sync:rules
  */
 import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SOURCE = join(root, 'src/utils/rules.ts');
-const TARGET = join(root, 'supabase/functions/play/rules.ts');
 
-mkdirSync(dirname(TARGET), { recursive: true });
+/** Canonical source -> generated copy. Add a pair here to share another file. */
+export const SHARED_FILES = [
+  ['src/utils/rules.ts', 'supabase/functions/play/rules.ts'],
+  ['src/utils/economy.ts', 'supabase/functions/play/economy.ts'],
+];
 
-const before = (() => {
-  try {
-    return readFileSync(TARGET, 'utf8');
-  } catch {
-    return null;
-  }
-})();
+for (const [from, to] of SHARED_FILES) {
+  const source = join(root, from);
+  const target = join(root, to);
+  mkdirSync(dirname(target), { recursive: true });
 
-copyFileSync(SOURCE, TARGET);
+  const before = (() => {
+    try {
+      return readFileSync(target, 'utf8');
+    } catch {
+      return null;
+    }
+  })();
 
-const after = readFileSync(TARGET, 'utf8');
-console.log(
-  before === after
-    ? 'rules.ts already in sync — no change'
-    : `rules.ts synced -> supabase/functions/play/rules.ts (${after.length} bytes)`,
-);
+  copyFileSync(source, target);
+  const after = readFileSync(target, 'utf8');
+
+  console.log(
+    before === after
+      ? `${from} already in sync — no change`
+      : `${from} synced -> ${to} (${after.length} bytes)`,
+  );
+}

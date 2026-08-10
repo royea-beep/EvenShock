@@ -6,19 +6,29 @@ import { getRoundOutcome, type Choice, type RoundOutcome } from './rules';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
-describe('rules are shared with the Edge Function, not duplicated', () => {
-  it('the deployed copy is byte-identical to the canonical file', () => {
-    const canonical = readFileSync(join(root, 'src/utils/rules.ts'), 'utf8');
-    const deployed = readFileSync(join(root, 'supabase/functions/play/rules.ts'), 'utf8');
+/**
+ * Every file that runs in both the browser and the Edge Function. Mirrors
+ * SHARED_FILES in scripts/sync-rules.mjs — if that list grows, this one must
+ * too, or the new file drifts unwatched.
+ */
+const SHARED = [
+  ['src/utils/rules.ts', 'supabase/functions/play/rules.ts'],
+  ['src/utils/economy.ts', 'supabase/functions/play/economy.ts'],
+] as const;
+
+describe('shared modules are copied, not duplicated', () => {
+  it.each(SHARED)('%s is byte-identical to its deployed copy', (canonical, deployed) => {
+    const a = readFileSync(join(root, canonical), 'utf8');
+    const b = readFileSync(join(root, deployed), 'utf8');
 
     // If this fails, someone edited one and not the other. Run `npm run sync:rules`.
-    // Never fix it by editing supabase/functions/play/rules.ts — that file is generated.
-    expect(deployed).toBe(canonical);
+    // Never fix it by editing the generated copy — it is overwritten.
+    expect(b).toBe(a);
   });
 
-  it('the shared file has no imports, so Deno can run it verbatim', () => {
-    const canonical = readFileSync(join(root, 'src/utils/rules.ts'), 'utf8');
-    const importLines = canonical
+  it.each(SHARED)('%s has no imports, so Deno can run it verbatim', (canonical) => {
+    const source = readFileSync(join(root, canonical), 'utf8');
+    const importLines = source
       .split('\n')
       .filter((line) => /^\s*import[\s{*]/.test(line) || /^\s*export\s+.*\bfrom\b/.test(line));
     expect(importLines).toEqual([]);
