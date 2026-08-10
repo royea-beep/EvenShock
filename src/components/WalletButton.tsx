@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { AuthState } from '../hooks/useAuth';
 import { detectWallet, shortenAddress } from '../data/wallet';
 import { isSupabaseConfigured, getSupabase } from '../data/supabaseClient';
+import { copy } from '../constants/copy';
 
 /**
  * Wallet connect UI and — crucially — the surface where every failure mode
@@ -23,10 +24,21 @@ import { isSupabaseConfigured, getSupabase } from '../data/supabaseClient';
  * client init, and wallet detection — so a visitor who doesn't understand
  * why nothing is happening can at least see WHAT is happening.
  */
-export function WalletButton({ auth }: { auth: AuthState }) {
+export function WalletButton({
+  auth,
+  guestHasProgress = false,
+}: {
+  auth: AuthState;
+  /**
+   * True when this browser holds guest XP or chips that connecting will NOT
+   * carry across. Drives the notice below.
+   */
+  guestHasProgress?: boolean;
+}) {
   const [popover, setPopover] = useState<PopoverState>(null);
   const [detected] = useState(() => detectWallet());
   const [showDiag, setShowDiag] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   // Auto-dismiss the popover after a beat so the corner doesn't stay occupied
   // once the user has read it. Long enough to read (Phantom install link
@@ -39,7 +51,25 @@ export function WalletButton({ auth }: { auth: AuthState }) {
 
   if (auth.status === 'unconfigured') return null;
 
+  /**
+   * Connecting starts a fresh account and does NOT bring guest progress with
+   * it. Migrating it would be a free-tokens exploit — clear the browser,
+   * replay, claim again — so the balance stays where it was earned.
+   *
+   * That has to be said BEFORE the wallet dialog opens, because afterwards it
+   * reads as an excuse. Only asked when there is actually something to lose;
+   * a player with nothing earned gets no friction.
+   */
+  const onConnectPressed = () => {
+    if (guestHasProgress) {
+      setConfirming(true);
+      return;
+    }
+    void onConnect();
+  };
+
   const onConnect = async () => {
+    setConfirming(false);
     setPopover(null);
     // Client-side pre-check: if we already know there's no wallet, skip the
     // signInWithWeb3 call and go straight to the install popover.
@@ -80,9 +110,45 @@ export function WalletButton({ auth }: { auth: AuthState }) {
 
   return (
     <div className="fixed right-4 top-[7.5rem] z-40 flex max-w-[16rem] flex-col items-end gap-2">
+      {/* Said before the wallet dialog, never after. */}
+      {confirming && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="guest-notice-title"
+          style={pillStyle}
+          className="w-64 bg-elevated p-3 text-left"
+        >
+          <p id="guest-notice-title" className="display-type text-sm font-bold text-ink">
+            {copy.economy.connectNoticeTitle}
+          </p>
+          <p className="mt-1 text-xs leading-snug text-muted">
+            {copy.economy.connectNoticeBody}
+          </p>
+          <div className="mt-3 flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={() => void onConnect()}
+              style={pillStyle}
+              className="display-type min-h-9 cursor-pointer bg-scissors px-3 text-xs font-bold text-scissors-ink"
+            >
+              {copy.economy.connectNoticeConfirm}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              style={pillStyle}
+              className="display-type min-h-9 cursor-pointer px-3 text-xs font-semibold text-ink"
+            >
+              {copy.economy.connectNoticeCancel}
+            </button>
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
-        onClick={onConnect}
+        onClick={onConnectPressed}
         disabled={auth.status === 'connecting'}
         style={pillStyle}
         className="display-type cursor-pointer bg-scissors px-3 py-1.5 text-xs font-semibold text-scissors-ink hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:cursor-wait"

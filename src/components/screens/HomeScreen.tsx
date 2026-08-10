@@ -2,7 +2,8 @@ import { motion } from 'framer-motion';
 import type { MatchFormat } from '../../types/game';
 import type { ThemeId } from '../../constants/themes';
 import { copy } from '../../constants/copy';
-import { ThemePicker } from '../ThemePicker';
+import { ThemePicker, type ThemeShop } from '../ThemePicker';
+import { BalanceStrip } from '../BalanceStrip';
 
 const FORMATS: MatchFormat[] = ['single', 'bo3', 'bo5'];
 
@@ -12,6 +13,10 @@ interface HomeScreenProps {
   onStart: () => void;
   theme: ThemeId;
   onThemeChange: (theme: ThemeId) => void;
+  /** XP and chips. Omitted before the first read lands. */
+  economy: { xp: number; chips: number; persistent: boolean; loading: boolean };
+  /** Absent when nothing is locked — see ThemePicker. */
+  shop?: ThemeShop;
 }
 
 export function HomeScreen({
@@ -20,6 +25,8 @@ export function HomeScreen({
   onStart,
   theme,
   onThemeChange,
+  economy,
+  shop,
 }: HomeScreenProps) {
   return (
     <motion.div
@@ -99,7 +106,17 @@ export function HomeScreen({
         </div>
       </div>
 
-      <ThemePicker theme={theme} onChange={onThemeChange} />
+      {/* Directly under the masthead, above the choices: the balance is the
+          reason the shop below it means anything, and for a guest the line
+          saying where it lives has to be seen before any of it is earned. */}
+      <BalanceStrip
+        xp={economy.xp}
+        chips={economy.chips}
+        persistent={economy.persistent}
+        loading={economy.loading}
+      />
+
+      <ThemePicker theme={theme} onChange={onThemeChange} shop={shop} />
 
       <motion.button
         type="button"

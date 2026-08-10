@@ -122,4 +122,48 @@ export const copy = {
 
     leaveMatch: 'Leave match',
   },
+
+  /**
+   * XP and chips. Every string here is virtual-currency wording and none of it
+   * may imply money, price in a real currency, or a way to buy chips — that is
+   * a different product with a different legal shape.
+   */
+  economy: {
+    xpLabel: 'XP',
+    chipsLabel: 'Chips',
+    levelLabel: 'Level',
+
+    /** Shown on the match-end screen, where the numbers actually change. */
+    earned: 'Earned this match',
+
+    /**
+     * Guest labelling. Said plainly and up front, because the alternative is
+     * someone discovering it after two hundred rounds.
+     */
+    guestTitle: 'Playing as a guest',
+    guestBody: 'XP and chips are saved in this browser only. Clearing it clears them.',
+    guestShort: 'This browser only',
+
+    /**
+     * Shown BEFORE the wallet dialog opens, never after. Guest progress is a
+     * demo of the loop, not a credit — migrating it would mean anyone could
+     * clear their browser, replay, and claim again.
+     */
+    connectNoticeTitle: 'Guest progress stays here',
+    connectNoticeBody:
+      'Connecting a wallet starts a fresh account. The XP and chips you earned as a guest stay in this browser and are not transferred.',
+    connectNoticeConfirm: 'Connect anyway',
+    connectNoticeCancel: 'Keep playing as guest',
+  },
+
+  shop: {
+    /** Locked tiles say what they cost, in chips, in place. */
+    priceLabel: (chips: number) => `${chips} chips`,
+    locked: 'Locked',
+    unlock: 'Unlock',
+    unlocking: 'Unlocking…',
+    owned: 'Unlocked',
+    cannotAfford: 'Not enough chips yet — keep playing.',
+    failed: "That didn't go through. Try again.",
+  },
 } as const;

@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { MatchFormat, Score } from '../../types/game';
 import { copy } from '../../constants/copy';
+import { BalanceStrip } from '../BalanceStrip';
 import { Confetti } from '../Confetti';
 import { HistoryTrail, OUTCOME_MARK } from '../MatchStatusBar';
 import { play } from '../../utils/sound';
 import { getMatchStats, type RoundEntry } from '../../utils/roundHistory';
 
 interface MatchEndScreenProps {
+  /** What this match paid. Same curve on both paths — see utils/economy.ts. */
+  earned: { xp: number; chips: number };
+  economy: { xp: number; chips: number; persistent: boolean; loading: boolean };
   score: Score;
   matchWinner: 'player' | 'opponent' | null;
   format: MatchFormat;
@@ -19,6 +23,8 @@ interface MatchEndScreenProps {
 }
 
 export function MatchEndScreen({
+  earned,
+  economy,
   score,
   matchWinner,
   format,
@@ -78,6 +84,25 @@ export function MatchEndScreen({
             {score.player} – {score.opponent}
           </p>
         </div>
+
+        {/* What this match paid, next to the balance it paid into — the two
+            numbers only mean something together. Shown before the recap
+            because it is the thing that changed. */}
+        <section className="w-full space-y-2">
+          <p className="display-type text-sm font-semibold text-muted">
+            {copy.economy.earned}
+          </p>
+          <p className="display-type text-lg font-bold text-ink tabular-nums">
+            +{earned.xp} {copy.economy.xpLabel}
+            {earned.chips > 0 && <> · +{earned.chips} {copy.economy.chipsLabel}</>}
+          </p>
+          <BalanceStrip
+            xp={economy.xp}
+            chips={economy.chips}
+            persistent={economy.persistent}
+            loading={economy.loading}
+          />
+        </section>
 
         {history.length > 0 && (
           <section className="w-full space-y-2">

@@ -8,8 +8,11 @@ import { useMuted } from './hooks/useMuted';
 import { useFastMode } from './hooks/useFastMode';
 import { useAuth } from './hooks/useAuth';
 import { useRounds } from './hooks/useRounds';
+import { useEconomy } from './hooks/useEconomy';
 import { usePrefsMigration } from './hooks/usePrefsMigration';
 import { getScreen } from './utils/getScreen';
+import { THEMES } from './constants/themes';
+import { isPricedTheme, matchAward } from './utils/economy';
 import { unlockAudio } from './utils/sound';
 import { installLatencyProbe } from './utils/latency';
 import { HomeScreen } from './components/screens/HomeScreen';
@@ -36,6 +39,9 @@ function App() {
   const { fast, toggleFast, setFast } = useFastMode();
   const { theme, setTheme } = useTheme();
   const imageSet = useThemeImages(theme);
+  // Balances follow identity: connecting a wallet re-reads the ACCOUNT's
+  // balance rather than carrying a guest one across. See useEconomy.
+  const economy = useEconomy(auth.status === 'authenticated', theme);
   // Derived in the UI layer, deliberately: useGame stays the multiplayer seam.
   const history = useRoundHistory(game);
   const reducedMotion = useReducedMotion();
@@ -134,6 +140,26 @@ function App() {
     rounds.prefetch();
   }, [game.matchStatus, game.playerChoice, game.roundNumber, rounds]);
 
+  /**
+   * Settle the economy exactly once when a match finishes.
+   *
+   * De-duped on the history ARRAY REFERENCE, which only changes when a new
+   * match starts — React strict mode fires effects twice and any nearby state
+   * change would otherwise settle the same match again. For a signed-in player
+   * that would be harmless (the server credits once, by idem_key, and this only
+   * re-reads) but for a guest it would silently double the payout, and the two
+   * paths must not differ in what they pay.
+   */
+  const settledRef = useRef<typeof history | null>(null);
+  useEffect(() => {
+    if (game.matchStatus !== 'complete') return;
+    if (history.length === 0) return;
+    if (settledRef.current === history) return;
+    settledRef.current = history;
+
+    economy.settleMatch(history.length, history.filter((e) => e.outcome === 'win').length);
+  }, [game.matchStatus, history, economy]);
+
   const handleStart = () => {
     unlockAudio(); // warm the audio context from a real user gesture
     // Opens the match server-side and prefetches round 1 before the round
@@ -153,7 +179,10 @@ function App() {
     <>
       <MuteToggle muted={muted} onToggle={toggleMuted} />
       <FastModeToggle fast={fast} onToggle={toggleFast} />
-      <WalletButton auth={auth} />
+      <WalletButton
+        auth={auth}
+        guestHasProgress={!economy.persistent && (economy.state.xp > 0 || economy.state.chips > 0)}
+      />
       <ImpactVariantBadge />
 
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
@@ -200,6 +229,25 @@ function App() {
                 onStart={handleStart}
                 theme={theme}
                 onThemeChange={setTheme}
+                economy={{
+                  xp: economy.state.xp,
+                  chips: economy.state.chips,
+                  persistent: economy.persistent,
+                  loading: economy.loading,
+                }}
+                // The shop only exists once something is actually locked. With
+                // everything owned this is undefined and the picker is exactly
+                // what it was before there was a currency.
+                shop={
+                  THEMES.some((t) => isPricedTheme(t.id) && !economy.owns(t.id))
+                    ? {
+                        owns: economy.owns,
+                        buy: economy.buy,
+                        chips: economy.state.chips,
+                        error: economy.buyError,
+                      }
+                    : undefined
+                }
               />
             )}
 
@@ -226,6 +274,16 @@ function App() {
             {screen === 'matchEnd' && (
               <MatchEndScreen
                 key="matchEnd"
+                earned={matchAward(
+                  history.length,
+                  history.filter((e) => e.outcome === 'win').length,
+                )}
+                economy={{
+                  xp: economy.state.xp,
+                  chips: economy.state.chips,
+                  persistent: economy.persistent,
+                  loading: economy.loading,
+                }}
                 score={game.score}
                 matchWinner={game.matchWinner}
                 format={game.format}

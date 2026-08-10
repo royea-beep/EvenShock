@@ -1,6 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { Choice } from '../types/game';
 import { THEMES, type ThemeId } from '../constants/themes';
+import { isPricedTheme, themePrice } from '../utils/economy';
 import { getImageSet } from '../assets/themes';
 import { copy } from '../constants/copy';
 import { MoveArt } from './MoveArt';
@@ -20,9 +21,24 @@ const REPRESENTATIVE_MOVE: Choice = 'rock';
  */
 const SCRIM = 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.74) 42%, rgba(0,0,0,0) 100%)';
 
+/**
+ * The shop, such as it is. Omit it entirely and the picker behaves exactly as
+ * it did before there was a currency — which is also what happens once a player
+ * owns everything, because a shop with nothing left to sell is just noise on a
+ * screen people use to change their look.
+ */
+export interface ThemeShop {
+  owns(sku: string): boolean;
+  buy(sku: string): Promise<boolean>;
+  /** Rendered on locked tiles so the goal is visible before it is reachable. */
+  chips: number;
+  error: string | null;
+}
+
 interface ThemePickerProps {
   theme: ThemeId;
   onChange: (theme: ThemeId) => void;
+  shop?: ThemeShop;
 }
 
 /**
@@ -33,9 +49,26 @@ interface ThemePickerProps {
  * that theme's tokens — the pattern only works because the Tailwind utilities
  * are built with `@theme inline` and resolve through the cascade at runtime.
  */
-export function ThemePicker({ theme, onChange }: ThemePickerProps) {
+export function ThemePicker({ theme, onChange, shop }: ThemePickerProps) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const gridRef = useRef<HTMLDivElement>(null);
+  const [buying, setBuying] = useState<string | null>(null);
+
+  /**
+   * A theme is locked only when there IS a shop and it is priced and unowned.
+   * With no shop every theme is free, which is what keeps this component
+   * unchanged for guests before they have played anything.
+   */
+  const isLocked = (id: string) => Boolean(shop) && isPricedTheme(id) && !shop!.owns(id);
+
+  const handleUnlock = async (id: string) => {
+    if (!shop || buying) return;
+    setBuying(id);
+    const bought = await shop.buy(id);
+    setBuying(null);
+    // Wearing what you just bought is the point of buying it.
+    if (bought) onChange(id as ThemeId);
+  };
 
   const handleKeyDown = (event: React.KeyboardEvent, index: number) => {
     // Read the real column count off the grid rather than duplicating the
@@ -55,7 +88,9 @@ export function ThemePicker({ theme, onChange }: ThemePickerProps) {
 
     event.preventDefault();
     const next = (index + step + THEMES.length) % THEMES.length;
-    onChange(THEMES[next].id);
+    // Focus always moves, so a locked tile is reachable and its price is
+    // announced; selection only follows for a theme the player actually has.
+    if (!isLocked(THEMES[next].id)) onChange(THEMES[next].id);
     refs.current[next]?.focus();
   };
 
@@ -74,6 +109,9 @@ export function ThemePicker({ theme, onChange }: ThemePickerProps) {
         {THEMES.map((option, index) => {
           const selected = option.id === theme;
           const imageSet = getImageSet(option.imageSlug);
+          const locked = isLocked(option.id);
+          const price = themePrice(option.id);
+          const unlocking = buying === option.id;
 
           return (
             <button
@@ -84,10 +122,18 @@ export function ThemePicker({ theme, onChange }: ThemePickerProps) {
               type="button"
               role="radio"
               aria-checked={selected}
-              aria-label={`${option.name} — ${option.blurb}`}
+              // The price belongs in the accessible name, not only in the badge:
+              // a locked tile that just reads "Jade" gives a screen-reader user
+              // no idea why tapping it does something different.
+              aria-label={
+                locked
+                  ? `${option.name} — ${option.blurb}. ${copy.shop.locked}, ${copy.shop.priceLabel(price ?? 0)}.`
+                  : `${option.name} — ${option.blurb}`
+              }
+              aria-disabled={locked || undefined}
               // Roving tabindex: one stop for the whole group, arrows move within.
               tabIndex={selected ? 0 : -1}
-              onClick={() => onChange(option.id)}
+              onClick={() => (locked ? void handleUnlock(option.id) : onChange(option.id))}
               onKeyDown={(event) => handleKeyDown(event, index)}
               data-theme={option.id}
               title={option.blurb}
@@ -141,6 +187,25 @@ export function ThemePicker({ theme, onChange }: ThemePickerProps) {
                   {option.name}
                 </span>
 
+                {/* A locked tile is dimmed further and carries its price. The
+                    art stays visible on purpose: the thing being sold is the
+                    look, so hiding it would be selling a closed box. */}
+                {locked && (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 bg-black/55 transition-colors group-hover:bg-black/40"
+                    />
+                    <span
+                      aria-hidden="true"
+                      style={{ borderRadius: 'var(--radius-sm)' }}
+                      className="display-type absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-[var(--surface-elevated)] px-2 py-1 text-[0.65rem] font-bold whitespace-nowrap text-[var(--text-primary)]"
+                    >
+                      {unlocking ? copy.shop.unlocking : copy.shop.priceLabel(price ?? 0)}
+                    </span>
+                  </>
+                )}
+
                 {/* Selection is carried four ways — a glyph badge, a heavier
                     border, the veil lifting, and aria-checked — so it never
                     rests on colour alone. */}
@@ -158,6 +223,15 @@ export function ThemePicker({ theme, onChange }: ThemePickerProps) {
           );
         })}
       </div>
+
+      {/* Only ever shown in response to an attempt. A standing "you cannot
+          afford things" message on a screen people use to change their look
+          would be nagging, not information. */}
+      {shop?.error && (
+        <p role="status" className="text-center text-sm text-[var(--outcome-lose)]">
+          {shop.error === 'insufficient_chips' ? copy.shop.cannotAfford : copy.shop.failed}
+        </p>
+      )}
     </section>
   );
 }
