@@ -11,6 +11,7 @@ import { useRounds } from './hooks/useRounds';
 import { usePrefsMigration } from './hooks/usePrefsMigration';
 import { getScreen } from './utils/getScreen';
 import { unlockAudio } from './utils/sound';
+import { installLatencyProbe } from './utils/latency';
 import { HomeScreen } from './components/screens/HomeScreen';
 import { RoundScreen } from './components/screens/RoundScreen';
 import { MatchEndScreen } from './components/screens/MatchEndScreen';
@@ -56,6 +57,11 @@ function App() {
     setFormat: game.setFormat,
     setFast,
   });
+
+  // `window.evenshockLatency()` returns the submit round-trip summary, so
+  // anyone testing on a real device can read p50/p95 without collecting console
+  // lines by hand.
+  useEffect(installLatencyProbe, []);
 
   const shakeControls = useAnimationControls();
   const shakenRound = useRef<number | null>(null);

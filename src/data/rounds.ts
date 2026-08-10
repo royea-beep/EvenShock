@@ -9,6 +9,8 @@ import {
   type RoundOutcome,
 } from '../utils/rules';
 import { getBotChoice } from '../utils/getBotChoice';
+import { recordSubmitLatency } from '../utils/latency';
+import { REVEAL_DELAY_MS } from '../constants/gameConfig';
 
 /**
  * The round protocol, client side.
@@ -141,11 +143,22 @@ export function createServerRounds(client: SupabaseClient): RoundsApi {
     },
 
     async submit(round, playerChoice) {
-      const data = await callPlay(client, {
-        action: 'submit',
-        round_id: round.roundId,
-        player_choice: playerChoice,
-      });
+      // Timed around the network call only — see utils/latency.ts. This is the
+      // figure that decides whether fast mode's budget survives contact with a
+      // phone, and it cannot be measured anywhere but on one.
+      const startedAt = performance.now();
+      let data: Record<string, unknown>;
+      try {
+        data = await callPlay(client, {
+          action: 'submit',
+          round_id: round.roundId,
+          player_choice: playerChoice,
+        });
+      } finally {
+        // Recorded even when the call fails: a timeout is exactly the case
+        // worth seeing, and dropping it would flatter the numbers.
+        recordSubmitLatency(performance.now() - startedAt, REVEAL_DELAY_MS);
+      }
 
       const opponentChoice = data.opponent_choice;
       const nonce = data.nonce;
