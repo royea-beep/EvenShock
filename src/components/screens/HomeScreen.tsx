@@ -4,6 +4,8 @@ import type { ThemeId } from '../../constants/themes';
 import { copy } from '../../constants/copy';
 import { ThemePicker, type ThemeShop } from '../ThemePicker';
 import { BalanceStrip } from '../BalanceStrip';
+import { ChipsShop } from '../ChipsShop';
+import type { Purchase } from '../../hooks/usePurchase';
 
 const FORMATS: MatchFormat[] = ['single', 'bo3', 'bo5'];
 
@@ -17,6 +19,8 @@ interface HomeScreenProps {
   economy: { xp: number; chips: number; persistent: boolean; loading: boolean };
   /** Absent when nothing is locked — see ThemePicker. */
   shop?: ThemeShop;
+  /** Chip purchase flow. Absent for guests — they never see the buy path. */
+  chipsShop?: Purchase;
 }
 
 export function HomeScreen({
@@ -27,6 +31,7 @@ export function HomeScreen({
   onThemeChange,
   economy,
   shop,
+  chipsShop,
 }: HomeScreenProps) {
   return (
     <motion.div
@@ -115,6 +120,11 @@ export function HomeScreen({
         persistent={economy.persistent}
         loading={economy.loading}
       />
+
+      {/* Guests never see the buy path — chipsShop is undefined for them.
+          The prop absence is the enforcement: the component simply isn't
+          rendered, so there's nothing to defeat with a screen inspector. */}
+      {chipsShop && <ChipsShop purchase={chipsShop} />}
 
       <ThemePicker theme={theme} onChange={onThemeChange} shop={shop} />
 

@@ -166,4 +166,49 @@ export const copy = {
     cannotAfford: 'Not enough chips yet — keep playing.',
     failed: "That didn't go through. Try again.",
   },
+
+  /**
+   * Buying chips with USDC. This is the section — and the ONLY section — where
+   * money is named. Chips are not currency, cannot be redeemed, and cannot be
+   * transferred out; the wording keeps that one-way relationship visible.
+   */
+  chipsPurchase: {
+    buyTitle: 'Get 100 chips',
+    buyPrice: 'for $1 in USDC (devnet)',
+    buyButton: 'Buy 100 chips',
+    buyButtonBusy: 'Working…',
+
+    tosTitle: 'Before your first purchase',
+    tosBody:
+      'Chips are in-game credit for EvenShock. They have no cash value, they cannot be redeemed for money, and they cannot leave your account. When you send USDC to buy them, that transaction is final — payments are not reversible.',
+    tosCheckbox: 'I understand: chips are non-refundable, non-redeemable, and stay in my account.',
+    tosContinue: 'I understand — continue',
+    tosCancel: 'Not now',
+    tosSaving: 'Saving…',
+
+    resumeTitle: 'You have a purchase in progress',
+    resumeBody:
+      "You started a purchase earlier that hasn't finished. If you already sent the payment, we'll credit it as soon as it confirms — you can leave this page open or come back later.",
+    resumePayNow: "I haven't paid yet — pay now",
+    resumeCheckStatus: "I already paid — check status",
+    resumeStartNew: 'Cancel that and start a new purchase',
+
+    walletMissing: 'Chip purchases need a Solana wallet in this release.',
+    walletBusy: 'Approve the transaction in your wallet…',
+    walletRejected: 'You cancelled the payment in your wallet.',
+    walletError: (why: string) => `Your wallet returned an error: ${why}`,
+
+    sending: 'Sending payment…',
+    pendingTitle: 'Waiting for the network',
+    pendingBody: "Your payment is in — we're waiting for the network to confirm it. This usually takes a few seconds.",
+    pendingSlowBody: "Your payment is safe — we'll credit it as soon as it confirms. You can close this page.",
+
+    credited: (chips: number) => `Credited: +${chips} chips`,
+    creditedClose: 'Close',
+
+    failedTitle: 'Payment could not be verified',
+    failedBody:
+      "We couldn't verify your payment against the intent. If USDC left your wallet, our reconciler will find it and credit you — nothing is lost. Contact support if this persists.",
+    failedClose: 'Close',
+  },
 } as const;

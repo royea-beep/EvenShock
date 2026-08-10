@@ -9,6 +9,7 @@ import { useFastMode } from './hooks/useFastMode';
 import { useAuth } from './hooks/useAuth';
 import { useRounds } from './hooks/useRounds';
 import { useEconomy } from './hooks/useEconomy';
+import { usePurchase } from './hooks/usePurchase';
 import { usePrefsMigration } from './hooks/usePrefsMigration';
 import { getScreen } from './utils/getScreen';
 import { THEMES } from './constants/themes';
@@ -42,6 +43,13 @@ function App() {
   // Balances follow identity: connecting a wallet re-reads the ACCOUNT's
   // balance rather than carrying a guest one across. See useEconomy.
   const economy = useEconomy(auth.status === 'authenticated', theme);
+  // A credited purchase must move the header balance immediately, so the
+  // hook fires this callback and we re-read from the server. Nothing local
+  // is added — the server's number is the one that counted.
+  const purchase = usePurchase({
+    authenticated: auth.status === 'authenticated',
+    onCredited: economy.refresh,
+  });
   // Derived in the UI layer, deliberately: useGame stays the multiplayer seam.
   const history = useRoundHistory(game);
   const reducedMotion = useReducedMotion();
@@ -248,6 +256,10 @@ function App() {
                       }
                     : undefined
                 }
+                // Guests never see chip purchases. This is the enforcement:
+                // the prop is undefined for guests and HomeScreen doesn't
+                // render the component at all.
+                chipsShop={auth.status === 'authenticated' ? purchase : undefined}
               />
             )}
 
