@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { configDefaults, defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -15,5 +15,13 @@ export default defineConfig({
     // `loading="lazy"` a no-op and charging every visitor for all seven themes'
     // previews up front. As separate files they stay cacheable and deferrable.
     assetsInlineLimit: (filePath) => (filePath.endsWith('.webp') ? false : undefined),
+  },
+  test: {
+    // `*.live.test.ts` talks to the LIVE project and writes real rows. It is
+    // run deliberately, by `npm run e2e:rounds`, and must never be swept up by
+    // `npm test` or by CI. The suite also refuses to start without
+    // EVENSHOCK_LIVE=1 — two fences, because one glob is a thin thing to have
+    // between a pull request and production data.
+    exclude: [...configDefaults.exclude, '**/*.live.test.ts'],
   },
 })

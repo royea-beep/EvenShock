@@ -13,6 +13,10 @@
     "themes:separation": "node scripts/theme-separation.mjs",
     "sync:rules": "node scripts/sync-rules.mjs",
     "devnet:setup": "node scripts/devnet/setup.mjs",
+    "devnet:e2e": "node scripts/devnet/e2e.mjs",
+    "e2e:rounds": "EVENSHOCK_LIVE=1 vitest run --config vitest.live.config.ts",
+    "e2e:browser": "node scripts/harness/browser-latency.mjs",
+    "devnet:setup": "node scripts/devnet/setup.mjs",
     "devnet:e2e": "node scripts/devnet/e2e.mjs"
   },
   "dependencies": {
@@ -30,6 +34,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "playwright-core": "^1.62.1",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.3.3",
     "tweetnacl": "^1.0.3",

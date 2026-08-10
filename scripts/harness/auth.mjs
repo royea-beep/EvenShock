@@ -51,10 +51,21 @@ export async function signInWithKeypair(supabaseUrl, anonKey, keypair, label = '
   });
 
   if (error) {
+    // Tell the two apart. A blocked host and a rejected domain both surface
+    // here, and pointing at the allow-list when the socket never opened sends
+    // whoever is debugging to the wrong dashboard. The proxy answers CONNECT
+    // with plain text, so Auth's JSON parse is what fails.
+    const blocked =
+      /not valid JSON|fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|tunnel/i.test(error.message);
+
     throw new Error(
-      `sign-in failed for ${label} (${keypair.publicKey.toBase58()}): ${error.message}\n` +
-        `  the signed message names ${SIWS_URL}; Supabase Auth rejects a domain that is not in the project's allowed URLs.\n` +
-        `  override with EVENSHOCK_SIWS_URL if the project is configured for a different site.`,
+      blocked
+        ? `sign-in for ${label} could not reach ${supabaseUrl}: ${error.message}\n` +
+          `  this looks like a NETWORK failure, not a rejected sign-in — the response was not JSON,\n` +
+          `  which is what an egress proxy returns when the host is not allow-listed.`
+        : `sign-in failed for ${label} (${keypair.publicKey.toBase58()}): ${error.message}\n` +
+          `  the signed message names ${SIWS_URL}; Supabase Auth rejects a domain that is not in the project's allowed URLs.\n` +
+          `  override with EVENSHOCK_SIWS_URL if the project is configured for a different site.`,
     );
   }
   if (!data.session) throw new Error(`sign-in for ${label} returned no session`);

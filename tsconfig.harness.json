@@ -1,0 +1,34 @@
+{
+  // The live harness is the one thing under scripts/ written in TypeScript, and
+  // it is the one thing that cannot be smoke-tested by running it locally — it
+  // talks to the live project. So it gets typechecked, which is the only static
+  // check standing between a rename in src/data/rounds.ts and a suite that dies
+  // on its first call.
+  //
+  // A separate project rather than folding it into tsconfig.app.json: the app
+  // has no business gaining `process` and node types just so a script can read
+  // an environment variable.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.harness.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    // The shared plumbing (auth.mjs, env.mjs) is plain JavaScript and stays that
+    // way — the payment suite imports it too. Allowed in, not checked.
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["scripts/harness"]
+}

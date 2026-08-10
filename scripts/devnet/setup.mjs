@@ -25,8 +25,8 @@ import {
   mintTo,
 } from '@solana/spl-token';
 import { assertDevnet, loadKeypair, readState, writeState, formatUnits, sleep } from './chain.mjs';
-import { signInWithKeypair } from './auth.mjs';
-import { SUPABASE_URL, ANON_KEY, SERVICE_ROLE_KEY, RPC_URL, requireServiceRole } from './env.mjs';
+import { signInWithKeypair } from '../harness/auth.mjs';
+import { SUPABASE_URL, ANON_KEY, SERVICE_ROLE_KEY, RPC_URL, requireServiceRole } from '../harness/env.mjs';
 
 const DECIMALS = 6;
 const MINT_TO_PAYER = 10_000n * 10n ** BigInt(DECIMALS); // 10,000 test dollars

@@ -23,9 +23,9 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { assertDevnet, loadKeypair, readState, writeReport, formatUnits, parseUnits, sleep } from './chain.mjs';
-import { signInWithKeypair, callPlay } from './auth.mjs';
+import { signInWithKeypair, callPlay } from '../harness/auth.mjs';
 import { sendUsdc, tokenBalance } from './pay.mjs';
-import { SUPABASE_URL, ANON_KEY, SERVICE_ROLE_KEY, RPC_URL, requireServiceRole } from './env.mjs';
+import { SUPABASE_URL, ANON_KEY, SERVICE_ROLE_KEY, RPC_URL, requireServiceRole } from '../harness/env.mjs';
 
 requireServiceRole();
 
@@ -76,6 +76,16 @@ const u1 = await signInWithKeypair(SUPABASE_URL, ANON_KEY, loadKeypair('user1'),
 const u2 = await signInWithKeypair(SUPABASE_URL, ANON_KEY, loadKeypair('user2'), 'user2');
 const play1 = (body) => callPlay(SUPABASE_URL, u1.accessToken, body);
 const play2 = (body) => callPlay(SUPABASE_URL, u2.accessToken, body);
+
+// The reset above deletes balances rows, and a user who never earns and never
+// pays would not get one back — which is exactly what happened to user2 and
+// showed up in QA as "3 profiles, 2 balances", reading like a provisioning bug.
+// It was not: balances are seeded lazily, by economy_state and credit_ledger,
+// and never by ensure_profile. Calling it here is what a real player's first
+// page load does, so the harness stops leaving a shape that invites the wrong
+// diagnosis.
+await play1({ action: 'economy_state' });
+await play2({ action: 'economy_state' });
 
 const treasuryBefore = await tokenBalance(connection, state.mint, state.treasury);
 
