@@ -62,6 +62,8 @@ const ERROR_STATUS: Record<string, number> = {
   round_expired: 410,
   rate_limited: 429,
   bad_request: 400,
+  forbidden: 403,
+  insufficient_chips: 409,
 };
 
 const isChoice = (v: unknown): v is Choice => CHOICES.includes(v as Choice);
