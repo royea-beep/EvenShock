@@ -64,6 +64,11 @@ const ERROR_STATUS: Record<string, number> = {
   bad_request: 400,
   forbidden: 403,
   insufficient_chips: 409,
+  tos_required: 403,
+  payments_unconfigured: 503,
+  cluster_mismatch: 409,
+  payment_mismatch: 409,
+  payment_failed: 409,
 };
 
 const isChoice = (v: unknown): v is Choice => CHOICES.includes(v as Choice);
@@ -306,6 +311,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return await buy(db, userId, body);
     case 'health':
       return await health(db, userId);
+    case 'accept_tos':
+      return await acceptTos(db, userId, body);
+    case 'create_intent':
+      return await createIntent(db, userId, body);
+    case 'confirm_payment':
+      return await confirmPayment(db, userId, body);
+    case 'reconcile':
+      return await reconcile(db, userId);
     default:
       return fail('bad_request', `Unknown action: ${String(body.action)}`, 400);
   }
@@ -508,4 +521,306 @@ async function health(db: SupabaseClient, userId: string) {
   if (refused) return refused;
 
   return json(data);
+}
+
+// ===================================================================== chain
+//
+// USDC purchases. The one rule: we never trust the client's claim that it paid.
+// The client reports a signature and nothing more; everything that decides
+// whether chips are credited is read from the chain here.
+
+const SOLANA_RPC_URL = Deno.env.get('SOLANA_RPC_URL') ?? '';
+const SOLANA_CLUSTER = Deno.env.get('SOLANA_CLUSTER') ?? '';
+const TOS_VERSION = 'v1';
+
+async function rpc(method: string, params: unknown[]): Promise<any> {
+  const res = await fetch(SOLANA_RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  const doc = await res.json();
+  if (doc.error) throw new Error(doc.error?.message ?? 'rpc_error');
+  return doc.result;
+}
+
+const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+/** base58, for generating a reference that looks like a pubkey to wallets. */
+function base58(bytes: Uint8Array): string {
+  const digits: number[] = [0];
+  for (const byte of bytes) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i += 1) {
+      carry += digits[i] << 8;
+      digits[i] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = (carry / 58) | 0;
+    }
+  }
+  let out = '';
+  for (const byte of bytes) {
+    if (byte === 0) out += '1';
+    else break;
+  }
+  for (let i = digits.length - 1; i >= 0; i -= 1) out += B58[digits[i]];
+  return out;
+}
+
+/** Raw base units to an exact decimal string. Never floats — this is money. */
+function formatUnits(raw: bigint, decimals: number): string {
+  const negative = raw < 0n;
+  const s = (negative ? -raw : raw).toString().padStart(decimals + 1, '0');
+  const whole = s.slice(0, s.length - decimals);
+  const frac = decimals > 0 ? s.slice(s.length - decimals) : '';
+  return `${negative ? '-' : ''}${whole}${frac ? '.' + frac : ''}`;
+}
+
+interface IntentRow {
+  id: string;
+  user_id: string;
+  cluster: string;
+  reference: string;
+  treasury_address: string;
+  usdc_mint: string;
+  usdc_decimals: number;
+}
+
+type ChainResult =
+  | { kind: 'pending' }
+  | { kind: 'failed' }
+  | { kind: 'not_ours'; why: string }
+  | { kind: 'ok'; amount: string; commitment: string };
+
+/**
+ * Reads a transaction and decides whether it pays THIS intent.
+ *
+ * Two checks carry the weight:
+ *
+ *   THE REFERENCE. Every intent carries a unique reference pubkey, and the
+ *   transaction must contain it. Without this, any USDC transfer into the
+ *   treasury could be claimed by whoever reports its signature first — someone
+ *   watching the treasury on-chain simply takes another player's payment. The
+ *   signature primary key stops it being credited TWICE; only this stops it
+ *   being credited to the WRONG PERSON once.
+ *
+ *   THE AMOUNT comes from the treasury's token-balance delta, not from the
+ *   intent and not from the client. Diffing pre/post balances rather than
+ *   parsing instructions handles transfer, transferChecked and any wrapper
+ *   identically, and it is measured in raw base units as BigInt so no float
+ *   ever touches a monetary value.
+ */
+async function verifyOnChain(intent: IntentRow, signature: string): Promise<ChainResult> {
+  const tx = await rpc('getTransaction', [
+    signature,
+    { commitment: 'confirmed', maxSupportedTransactionVersion: 0, encoding: 'jsonParsed' },
+  ]);
+
+  // Not visible yet. Solana finality is not instant, so this is the normal
+  // answer for a few seconds and means "keep waiting", never "it failed".
+  if (!tx) return { kind: 'pending' };
+  if (tx.meta?.err) return { kind: 'failed' };
+
+  const keys: string[] = (tx.transaction?.message?.accountKeys ?? []).map((k: any) =>
+    typeof k === 'string' ? k : k.pubkey,
+  );
+  if (!keys.includes(intent.reference)) {
+    return { kind: 'not_ours', why: 'reference_absent' };
+  }
+
+  const post = (tx.meta?.postTokenBalances ?? []) as any[];
+  const pre = (tx.meta?.preTokenBalances ?? []) as any[];
+  const postB = post.find(
+    (b) => b.owner === intent.treasury_address && b.mint === intent.usdc_mint,
+  );
+  if (!postB) return { kind: 'not_ours', why: 'no_treasury_balance_for_mint' };
+
+  const preB = pre.find((b) => b.accountIndex === postB.accountIndex);
+  const deltaRaw =
+    BigInt(postB.uiTokenAmount?.amount ?? '0') - BigInt(preB?.uiTokenAmount?.amount ?? '0');
+  if (deltaRaw <= 0n) return { kind: 'not_ours', why: 'no_incoming_transfer' };
+
+  return {
+    kind: 'ok',
+    amount: formatUnits(deltaRaw, intent.usdc_decimals),
+    commitment: 'confirmed',
+  };
+}
+
+/** Loads an intent the caller owns, and refuses a cluster mismatch outright. */
+async function loadIntent(
+  db: SupabaseClient,
+  userId: string,
+  intentId: unknown,
+): Promise<{ intent?: IntentRow; refusal?: Response }> {
+  if (typeof intentId !== 'string') {
+    return { refusal: fail('bad_request', 'intent_id required', 400) };
+  }
+  const { data, error } = await db
+    .from('payment_intents')
+    .select('id, user_id, cluster, reference, treasury_address, usdc_mint, usdc_decimals')
+    .eq('id', intentId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) return { refusal: fail('db_error', error.message, 500) };
+  if (!data) return { refusal: fail('not_found', 'No such payment', 404) };
+
+  // Fail closed. Verifying a mainnet intent against a devnet RPC — or the
+  // reverse — is the worst mistake available here, so it is refused rather
+  // than noticed later on a dashboard.
+  if (!SOLANA_RPC_URL || !SOLANA_CLUSTER) {
+    return { refusal: fail('payments_unconfigured', 'No RPC configured', 503) };
+  }
+  if (data.cluster !== SOLANA_CLUSTER) {
+    return {
+      refusal: fail('cluster_mismatch', `Intent is ${data.cluster}, server is ${SOLANA_CLUSTER}`, 409),
+    };
+  }
+  return { intent: data as IntentRow };
+}
+
+// ------------------------------------------------------------------ actions
+
+async function acceptTos(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
+  const version = typeof body.version === 'string' ? body.version : TOS_VERSION;
+  const { data, error } = await db.rpc('record_tos_acceptance', {
+    p_user_id: userId,
+    p_version: version,
+  });
+  if (error) return fail('db_error', error.message, 500);
+  const refused = rpcError(data);
+  return refused ?? json(data);
+}
+
+async function createIntent(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
+  if (!SOLANA_CLUSTER) return fail('payments_unconfigured', 'No cluster configured', 503);
+
+  // The reference is generated HERE, never accepted from the client: a client
+  // that chose its own could reuse one and bind someone else's payment.
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+
+  const { data, error } = await db.rpc('create_payment_intent', {
+    p_user_id: userId,
+    p_cluster: SOLANA_CLUSTER,
+    p_reference: base58(bytes),
+    p_expected_usdc: typeof body.usdc === 'number' && body.usdc > 0 ? body.usdc : 1,
+    p_tos_version: typeof body.tos_version === 'string' ? body.tos_version : TOS_VERSION,
+  });
+  if (error) return fail('db_error', error.message, 500);
+  const refused = rpcError(data);
+  return refused ?? json(data);
+}
+
+async function confirmPayment(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
+  const { intent, refusal } = await loadIntent(db, userId, body.intent_id);
+  if (refusal) return refusal;
+
+  const signature = body.signature;
+  if (typeof signature !== 'string' || signature.length < 32) {
+    return fail('bad_request', 'signature required', 400);
+  }
+
+  let result: ChainResult;
+  try {
+    result = await verifyOnChain(intent!, signature);
+  } catch (err) {
+    // An RPC that is down must not look like a rejected payment. The money may
+    // well be on chain; this is our failure to read it, and reconciliation will
+    // pick it up.
+    return fail('rpc_unavailable', err instanceof Error ? err.message : 'rpc error', 503);
+  }
+
+  if (result.kind === 'pending') return json({ status: 'pending' });
+  if (result.kind === 'failed') return fail('payment_failed', 'Transaction failed on chain', 409);
+  if (result.kind === 'not_ours') return fail('payment_mismatch', result.why, 409);
+
+  const { data, error } = await db.rpc('credit_purchase', {
+    p_signature: signature,
+    p_cluster: intent!.cluster,
+    p_user_id: userId,
+    p_intent_id: intent!.id,
+    p_treasury: intent!.treasury_address,
+    p_mint: intent!.usdc_mint,
+    p_usdc_amount: result.amount,
+    p_commitment: result.commitment,
+  });
+  if (error) return fail('db_error', error.message, 500);
+  const refused = rpcError(data);
+  if (refused) return refused;
+
+  return json({ status: 'credited', ...data });
+}
+
+/**
+ * Finds payments nobody told us about.
+ *
+ * A player who pays and closes the tab has still paid, and the money is
+ * irreversible, so it cannot depend on the client coming back to report a
+ * signature. Every intent carries a reference, and a reference is an account in
+ * the transaction — so the chain can be asked "what paid this intent" directly.
+ *
+ * Owner-triggered rather than scheduled, because nothing here is scheduled yet
+ * and a cron that silently stops is worse than a button someone presses.
+ */
+async function reconcile(db: SupabaseClient, userId: string) {
+  const { data: owner } = await db
+    .from('profiles')
+    .select('is_owner')
+    .eq('id', userId)
+    .maybeSingle();
+  if (!owner?.is_owner) return fail('forbidden', 'Owner only', 403);
+  if (!SOLANA_RPC_URL || !SOLANA_CLUSTER) {
+    return fail('payments_unconfigured', 'No RPC configured', 503);
+  }
+
+  const { data: intents, error } = await db.rpc('open_intents_for_reconcile', {
+    p_max_age: '7 days',
+  });
+  if (error) return fail('db_error', error.message, 500);
+
+  const scanned: unknown[] = [];
+  for (const row of (intents ?? []) as any[]) {
+    if (row.cluster !== SOLANA_CLUSTER) continue;
+
+    let sigs: any[] = [];
+    try {
+      sigs = (await rpc('getSignaturesForAddress', [row.reference, { limit: 10 }])) ?? [];
+    } catch {
+      continue; // a failed read is not a verdict; the next run tries again
+    }
+    if (sigs.length === 0) continue;
+
+    const intent: IntentRow = {
+      id: row.id,
+      user_id: row.user_id,
+      cluster: row.cluster,
+      reference: row.reference,
+      treasury_address: row.treasury_address,
+      usdc_mint: row.usdc_mint,
+      usdc_decimals: 6,
+    };
+
+    for (const s of sigs) {
+      const verdict = await verifyOnChain(intent, s.signature);
+      if (verdict.kind !== 'ok') continue;
+      const { data: credited } = await db.rpc('credit_purchase', {
+        p_signature: s.signature,
+        p_cluster: intent.cluster,
+        p_user_id: intent.user_id,
+        p_intent_id: intent.id,
+        p_treasury: intent.treasury_address,
+        p_mint: intent.usdc_mint,
+        p_usdc_amount: verdict.amount,
+        p_commitment: verdict.commitment,
+      });
+      scanned.push({ intent_id: intent.id, signature: s.signature, result: credited });
+    }
+  }
+
+  return json({ ok: true, cluster: SOLANA_CLUSTER, credited: scanned });
 }
