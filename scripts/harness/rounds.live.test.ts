@@ -68,6 +68,7 @@ async function reset(id: string) {
   await admin.from('matches').delete().eq('user_id', id).throwOnError();
   await admin.from('balances').delete().eq('user_id', id).throwOnError();
   await admin.from('inventory').delete().eq('user_id', id).throwOnError();
+  await admin.from('integrity_events').delete().eq('user_id', id).throwOnError();
 }
 
 beforeAll(async () => {
@@ -289,14 +290,23 @@ describe('walking out of a match', () => {
 });
 
 describe('the integrity log', () => {
-  it('recorded nothing for a clean run', async () => {
-    // Every FairnessError the client raises is also reported to the server. An
-    // empty log here is the corroborating evidence that the rounds above passed
-    // for the right reason rather than by not being checked.
+  it('recorded only the violations this suite deliberately provoked', async () => {
+    // Every FairnessError the client raises is also reported to the server. The
+    // "clean" rounds above pass silently; the ONE violation this suite provokes
+    // on purpose — `refuses a different move for a round already resolved` — is
+    // expected to produce exactly one `move_changed_after_resolution` event
+    // from the server. Asserting on that shape is the corroborating evidence
+    // that the fairness checks fired for the right reason, without dressing up
+    // a deliberate protocol break as "nothing to see".
     const { data } = await admin
       .from('integrity_events')
       .select('kind, source, detail')
       .eq('user_id', userId);
-    expect(data).toEqual([]);
+    expect(data).toEqual([
+      expect.objectContaining({
+        kind: 'move_changed_after_resolution',
+        source: 'server',
+      }),
+    ]);
   });
 });
