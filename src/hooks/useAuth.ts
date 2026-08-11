@@ -21,6 +21,17 @@ export type AuthStatus =
 
 export interface AuthState {
   status: AuthStatus;
+  /**
+   * Has the auth bootstrap finished?
+   *
+   * `status` starts at 'guest' and stays there until `getSession()` resolves,
+   * so "guest" and "we do not know yet" are the same value — which is exactly
+   * the ambiguity that broke crash-resume in useRounds: it consumed the
+   * committed round during the bootstrap, treating a signed-in player as a
+   * guest. Anything whose behaviour differs between guest and signed-in must
+   * wait for this rather than reading `status` on first render.
+   */
+  resolved: boolean;
   session: Session | null;
   address: string | null;
   error: string | null;
@@ -37,6 +48,8 @@ export function useAuth(): AuthState {
     isSupabaseConfigured() ? 'guest' : 'unconfigured',
   );
   const [error, setError] = useState<string | null>(null);
+  // Unconfigured is settled from the start: there is no session to look for.
+  const [resolved, setResolved] = useState(() => !isSupabaseConfigured());
   const [profileAddress, setProfileAddress] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,11 +63,13 @@ export function useAuth(): AuthState {
       if (cancelled) return;
       setSession(data.session);
       setStatus(data.session ? 'authenticated' : 'guest');
+      setResolved(true);
     });
 
     const { data: sub } = client.auth.onAuthStateChange((_event, next) => {
       setSession(next);
       setStatus(next ? 'authenticated' : 'guest');
+      setResolved(true);
       // Any subsequent change clears a stale error banner.
       setError(null);
       if (!next) setProfileAddress(null);
@@ -131,5 +146,5 @@ export function useAuth(): AuthState {
   // between signing in and the profile arriving.
   const address = profileAddress;
 
-  return { status, session, address, error, connect, disconnect: doDisconnect };
+  return { status, resolved, session, address, error, connect, disconnect: doDisconnect };
 }

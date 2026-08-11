@@ -26,6 +26,9 @@ import { FAST_MODE_ENABLED } from './constants/features';
 import { LeaveMatchControl } from './components/LeaveMatchControl';
 import { WalletButton } from './components/WalletButton';
 import { EntryDoor } from './components/screens/EntryScreen';
+import { VersusScreen } from './components/screens/VersusScreen';
+import { useMultiplayer } from './hooks/useMultiplayer';
+import { MULTIPLAYER_UI_ENABLED } from './constants/features';
 import { RoundTrouble } from './components/RoundTrouble';
 // TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
 import { ImpactVariantBadge } from './components/ImpactVariantBadge';
@@ -36,7 +39,10 @@ function App() {
   // Rounds are resolved by the server for a signed-in player and by a local
   // draw for a guest — same interface, same async shape, same failure paths.
   // See useRounds: guest mode is not a second, simpler game.
-  const rounds = useRounds(auth.status === 'authenticated');
+  // `auth.resolved` matters here and nowhere else so far: crash-resume must not
+  // treat the bootstrap window as "guest" and throw away a signed-in player's
+  // committed round. See resumeDecision in useRounds.
+  const rounds = useRounds(auth.status === 'authenticated', auth.resolved);
   const game = useGame({ resolveOpponentChoice: rounds.resolveOpponentChoice });
   const screen = getScreen(game);
   const { muted, toggleMuted } = useMuted();
@@ -53,6 +59,10 @@ function App() {
     authenticated: auth.status === 'authenticated',
     onCredited: economy.refresh,
   });
+  // Playing a friend. Signed-in only — a table needs an identity on both
+  // sides, and this is the first feature that is meaningless without one, so
+  // guest mode is not bent to allow it.
+  const mp = useMultiplayer(auth.status === 'authenticated');
   // The front door. Asked once, remembered, reopenable from the wallet button.
   // It renders OVER a mounted, playable app rather than in front of it — see
   // EntryScreen: if it fails, the game is what's left.
@@ -253,7 +263,19 @@ function App() {
           }`}
         >
           <AnimatePresence mode="wait">
-            {screen === 'home' && (
+            {/* The friend match takes over the whole surface while it is open.
+                It sits ABOVE the solo screens rather than beside them because a
+                player is in one match or the other, never both. */}
+            {mp.active && (
+              <VersusScreen
+                key="versus"
+                mp={mp}
+                imageSet={imageSet}
+                chips={economy.state.chips}
+              />
+            )}
+
+            {!mp.active && screen === 'home' && (
               <HomeScreen
                 key="home"
                 format={game.format}
@@ -284,6 +306,12 @@ function App() {
                 // the prop is undefined for guests and HomeScreen doesn't
                 // render the component at all.
                 chipsShop={auth.status === 'authenticated' ? purchase : undefined}
+                // The entry to the friend match. Absent for guests, and absent
+                // entirely until the flag is on — a button that cannot work is
+                // worse than no button.
+                onPlayFriend={
+                  MULTIPLAYER_UI_ENABLED && auth.status === 'authenticated' ? mp.open : undefined
+                }
               />
             )}
 

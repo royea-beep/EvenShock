@@ -57,6 +57,78 @@ export const copy = {
     dismiss: 'Close',
   },
 
+  /**
+   * Playing a friend. Every state a player can be in has a sentence here,
+   * including the ones that go badly — a forfeit that reads as a generic
+   * "match expired" is the difference between a game and a grievance.
+   */
+  versus: {
+    entry: 'Play a friend',
+    title: 'Play a friend',
+    subtitle: 'One of you makes a table, the other types the code.',
+
+    createHeading: 'Make a table',
+    formatLabel: 'Length',
+    stakeLabel: 'Stake',
+    freeStake: 'Free',
+    createButton: 'Make the table',
+    creating: 'Making it…',
+
+    joinHeading: 'Join a table',
+    codePlaceholder: 'Invite code',
+    joinButton: 'Join',
+    joining: 'Joining…',
+
+    /** The waiting room. The code is the whole screen — it is the one thing
+     *  the player has to get to another human. */
+    waitingTitle: 'Waiting for your friend',
+    waitingBody: 'Send them this code. The table stays open for 10 minutes.',
+    copyCode: 'Copy code',
+    copied: 'Copied',
+
+    /** In-round. "They have moved" is never shown, because the server never
+     *  says it — knowing would be a free option on your own move. */
+    yourMove: 'Make your move',
+    committedTitle: 'Move locked in',
+    committedBody: 'Neither of you can see the other until both have moved.',
+    revealingTitle: 'Revealing…',
+    revealingBody: 'Both moves are in. Settling the round.',
+
+    roundLabel: (n: number) => `Round ${n}`,
+    scoreLabel: 'Score',
+    youLabel: 'You',
+    themLabel: 'Them',
+
+    wonRound: 'You win the round',
+    lostRound: 'You lose the round',
+    tiedRound: 'A tie — go again',
+
+    /** Forfeits, named. Which one happened is not a detail. */
+    forfeitTheirs: 'They ran out of time',
+    forfeitYours: 'You ran out of time',
+    voidRound: 'Nobody moved in time — the round was voided',
+
+    nextRound: 'Next round',
+    leave: 'Leave',
+    finish: 'Done',
+    backToLobby: 'Back',
+
+    /** The one that must never be quiet: the server contradicted itself. */
+    unverifiedTitle: 'That result could not be verified',
+    unverifiedBody:
+      "The move revealed doesn't match what was locked in before the round. The match has been stopped and nothing was accepted.",
+
+    errors: {
+      table_unavailable: 'That code is not a table you can join.',
+      insufficient_chips: "You can't cover that stake.",
+      wallet_is_treasury: 'The treasury wallet cannot sit at a table.',
+      bad_stake: 'That stake is not on offer.',
+      rate_limited: 'Slow down a moment, then try again.',
+      network: "That didn't reach us. Try again.",
+    } as Record<string, string>,
+    errorFallback: 'Something went wrong with that table.',
+  },
+
   home: {
     title: 'EvenShock',
     subtitle: 'Rock. Paper. Scissors. Outsmart the bot.',

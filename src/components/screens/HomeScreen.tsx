@@ -21,6 +21,12 @@ interface HomeScreenProps {
   shop?: ThemeShop;
   /** Chip purchase flow. Absent for guests — they never see the buy path. */
   chipsShop?: Purchase;
+  /**
+   * Opens the friend match. Absent for guests, and absent entirely while the
+   * multiplayer flag is off — the prop being undefined is the enforcement, so
+   * there is no button to find with a screen inspector.
+   */
+  onPlayFriend?: () => void;
 }
 
 export function HomeScreen({
@@ -32,6 +38,7 @@ export function HomeScreen({
   economy,
   shop,
   chipsShop,
+  onPlayFriend,
 }: HomeScreenProps) {
   return (
     <motion.div
@@ -144,6 +151,24 @@ export function HomeScreen({
       >
         {copy.home.startButton}
       </motion.button>
+
+      {/* Second, quieter than Start: the bot game is what a visitor came for,
+          and the friend match is what they stay for. */}
+      {onPlayFriend && (
+        <button
+          type="button"
+          onClick={onPlayFriend}
+          style={{
+            borderRadius: 'var(--radius-themed-md)',
+            borderWidth: 'var(--border-width)',
+            borderColor: 'var(--border-color)',
+            borderStyle: 'var(--border-style)',
+          }}
+          className="display-type -mt-4 min-h-11 cursor-pointer bg-elevated px-8 text-sm font-bold text-ink hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+        >
+          {copy.versus.entry}
+        </button>
+      )}
     </motion.div>
   );
 }
