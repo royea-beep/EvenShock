@@ -105,6 +105,27 @@ begin
   out_ := out_ || format('lock order          : ascending=%s identical across tables=%s',
     (lock1->>0) < (lock1->>1), lock1 = lock2);
 
+  -- THE TREASURY MAY NOT SIT. Asserted by pointing an existing test account's
+  -- profile at the live treasury address for the length of the transaction —
+  -- the rollback at the end puts it back, and no new identity is minted for a
+  -- test. If payments are unconfigured there is no treasury to impersonate and
+  -- the case is reported as skipped rather than silently passing.
+  select treasury_address into s from public.payment_config where active limit 1;
+  if s is null then
+    out_ := out_ || 'treasury guard      : SKIPPED (no active payment_config)';
+  else
+    update public.profiles set wallet_address = s where id = B;
+    out_ := out_ || format('treasury is_treasury: %s', public.is_treasury_wallet(B));
+    out_ := out_ || format('treasury create 100 : error=%s', coalesce(public.mp_create_table(B,'single',100)->>'error','NONE — GUARD FAILED'));
+    out_ := out_ || format('treasury create free: error=%s (free tables too)', coalesce(public.mp_create_table(B,'single',0)->>'error','NONE — GUARD FAILED'));
+    t := public.mp_create_table(A, 'single', 10); tid := (t->>'table_id')::uuid;
+    e := public.mp_join_table(B, t->>'invite_code');
+    out_ := out_ || format('treasury join       : error=%s', coalesce(e->>'error','NONE — GUARD FAILED'));
+    select format('seat untouched      : seat_b=%s status=%s (no escrow attempted)',
+      coalesce(seat_b::text,'null'), status) into s from public.mp_tables where id = tid;
+    out_ := out_ || s;
+  end if;
+
   select bool_and(conserved) into ok from public.mp_conservation_check();
   out_ := out_ || format('ALL STAKE TABLES    : conserved=%s', ok);
 

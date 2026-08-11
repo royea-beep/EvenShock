@@ -208,6 +208,14 @@ export const copy = {
     wonByForfeitTitle: 'Your opponent ran out of time',
     wonByForfeitBody: (payout: number) => `The round went to you, and the pot: +${payout} chips.`,
 
+    /** The treasury wallet is refused a seat server-side, at every stake
+     *  including free. Say which account and why — a refusal that doesn't
+     *  name its reason reads as a bug, which is exactly how this one was
+     *  first reported. */
+    treasuryTitle: 'This wallet runs the house',
+    treasuryBody:
+      "You're signed in with the treasury wallet, which collects the house cut. It can't also sit at a table — that would make the books unreadable. Sign in with a player wallet to play.",
+
     /** Chips are chips. Restated at the point the house starts earning. */
     noCashValue: 'Chips stay in the game. They have no cash value and cannot be withdrawn.',
   },
