@@ -23,6 +23,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const SHARED_FILES = [
   ['src/utils/rules.ts', 'supabase/functions/play/rules.ts'],
   ['src/utils/economy.ts', 'supabase/functions/play/economy.ts'],
+  // The multiplayer function is deployed separately from `play` — on purpose,
+  // so shipping a game feature never redeploys the payment path — and it needs
+  // the same outcome table. A second copy is a second chance to drift, which
+  // is exactly why it is listed here rather than maintained by hand.
+  ['src/utils/rules.ts', 'supabase/functions/mp/rules.ts'],
 ];
 
 for (const [from, to] of SHARED_FILES) {

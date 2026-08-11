@@ -116,11 +116,19 @@ export interface MultiplayerError extends Error {
   status?: number;
 }
 
-async function callPlay(
+/**
+ * Multiplayer talks to its OWN function, not to `play`.
+ *
+ * `play` is the function that credits USDC purchases. Adding six cases to its
+ * switch would mean every change to a game screen republishes the code that
+ * touches money — and that path has already been broken twice by things that
+ * had nothing to do with it. Two functions, two blast radii.
+ */
+async function callMp(
   client: SupabaseClient,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const { data, error } = await client.functions.invoke('play', { body });
+  const { data, error } = await client.functions.invoke('mp', { body });
   if (error) {
     const res = (error as { context?: Response }).context;
     if (res && typeof res.status === 'number') {
@@ -191,7 +199,7 @@ export interface MultiplayerApi {
 export function createMultiplayer(client: SupabaseClient): MultiplayerApi {
   return {
     async createTable(format, stake) {
-      const d = await callPlay(client, { action: 'mp_create', format, stake });
+      const d = await callMp(client, { action: 'mp_create', format, stake });
       return {
         tableId: String(d.table_id),
         inviteCode: typeof d.invite_code === 'string' ? d.invite_code : null,
@@ -206,7 +214,7 @@ export function createMultiplayer(client: SupabaseClient): MultiplayerApi {
     },
 
     async joinTable(code) {
-      const d = await callPlay(client, { action: 'mp_join', code });
+      const d = await callMp(client, { action: 'mp_join', code });
       return {
         tableId: String(d.table_id),
         inviteCode: null,
@@ -221,7 +229,7 @@ export function createMultiplayer(client: SupabaseClient): MultiplayerApi {
     },
 
     async state(tableId) {
-      const d = await callPlay(client, { action: 'mp_state', table_id: tableId });
+      const d = await callMp(client, { action: 'mp_state', table_id: tableId });
       const r = d.round as Record<string, unknown> | null;
       return {
         seat: asSeat(d.seat),
@@ -250,20 +258,20 @@ export function createMultiplayer(client: SupabaseClient): MultiplayerApi {
     },
 
     async openRound(tableId) {
-      const d = await callPlay(client, { action: 'mp_open_round', table_id: tableId });
+      const d = await callMp(client, { action: 'mp_open_round', table_id: tableId });
       return Number(d.round_id);
     },
 
     async commit(tableId, roundId, move) {
-      await callPlay(client, { action: 'mp_commit', table_id: tableId, round_id: roundId, move });
+      await callMp(client, { action: 'mp_commit', table_id: tableId, round_id: roundId, move });
     },
 
     async reveal(roundId) {
-      await callPlay(client, { action: 'mp_reveal', round_id: roundId });
+      await callMp(client, { action: 'mp_reveal', round_id: roundId });
     },
 
     async result(roundId) {
-      const d = await callPlay(client, { action: 'mp_result', round_id: roundId });
+      const d = await callMp(client, { action: 'mp_result', round_id: roundId });
       if (!d.settled) {
         return {
           settled: false,
