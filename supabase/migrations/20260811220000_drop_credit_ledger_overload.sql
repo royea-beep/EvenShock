@@ -1,0 +1,22 @@
+-- Drop the old 7-argument credit_ledger.
+--
+-- Adding `p_mp_table_id` in the stakes migration used `create or replace
+-- function` with one more argument, and in Postgres that creates an OVERLOAD
+-- rather than replacing anything. Both signatures then existed, and every
+-- existing 5- or 6-argument call — which is most of them, including every chip
+-- purchase and every match reward — became ambiguous:
+--
+--   ERROR: function public.credit_ledger(uuid, unknown, integer, unknown, text)
+--          is not unique
+--
+-- Caught by the stakes test on its first run, before a single real call hit
+-- it, but it is worth being precise about how close this was: the stakes
+-- migration applied CLEANLY. Nothing about the deploy said anything was
+-- wrong. The next chip purchase would have failed instead, on a path this
+-- migration never touched.
+--
+-- Same family as the `open_intents_for_reconcile` return-type error earlier:
+-- `create or replace function` silently does something other than replace
+-- whenever the signature moves. Changing a function's argument list is a DROP,
+-- and it deserves to be written as one.
+drop function if exists public.credit_ledger(uuid, text, bigint, text, text, uuid, text);

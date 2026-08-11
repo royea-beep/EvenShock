@@ -5,6 +5,58 @@ import type { Choice, MatchFormat, RoundOutcome } from '../types/game';
  * component — keeps this file the single place to translate later.
  */
 export const copy = {
+  /**
+   * The front door. Two paths, stated in full, chosen deliberately.
+   *
+   * The bullets are the whole point of the screen: guest-by-default with a
+   * caption meant nobody arriving at the site knew an account existed, let
+   * alone what it unlocked. So each path lists what it actually gets, and the
+   * guest path names its limit in the same breath rather than in a footnote —
+   * the wallet path only sells itself honestly if the guest one is described
+   * fairly.
+   */
+  entry: {
+    title: 'How do you want to play?',
+    subtitle: 'Pick once. You can switch whenever you like.',
+
+    guestTitle: 'Play as guest',
+    guestTagline: 'Start now, nothing to install.',
+    guestBullets: [
+      'The whole game against the bot',
+      'XP, chips and every free look',
+      'No account, no wallet, no sign-in',
+    ],
+    guestLimit: 'Progress is saved in this browser only — clearing it clears everything.',
+    guestCta: 'Play as guest',
+
+    walletTitle: 'Connect a wallet',
+    walletTagline: 'An account that follows you.',
+    walletBullets: [
+      'XP and chips kept on the server, on any browser',
+      'Buy chips and unlock the paid looks',
+      'Play a friend with an invite code',
+      'Free tables or chip stakes, winner takes the pot',
+    ],
+    walletLimit: 'Starts a fresh account — guest progress stays in this browser.',
+    walletCta: 'Connect wallet',
+    walletNeeds: 'Needs a wallet extension: Phantom or MetaMask.',
+    walletConnecting: 'Connecting…',
+    /** Tag on the bullets that describe something the server can do and the
+     *  app cannot yet. Removed by flipping MULTIPLAYER_UI_ENABLED, not by
+     *  editing the bullet — a promise should stop being provisional in one
+     *  place. */
+    soonTag: 'soon',
+
+    /** Connecting can fail, and the door must not trap anyone when it does. */
+    failedRejected: 'Sign-in was cancelled. You can still play as a guest.',
+    failedNoWallet: 'No wallet extension found. Install one and reload — or play as a guest now.',
+    failedError: (message: string) => `Sign-in failed: ${message}`,
+
+    /** The way back in, next to the wallet button. */
+    switchLink: 'Guest or wallet?',
+    dismiss: 'Close',
+  },
+
   home: {
     title: 'EvenShock',
     subtitle: 'Rock. Paper. Scissors. Outsmart the bot.',
@@ -156,6 +208,70 @@ export const copy = {
     connectNoticeCancel: 'Keep playing as guest',
   },
 
+  /**
+   * Stake tables. Every string here names the cut before anyone commits to
+   * anything: a visible rake is respected and a discovered one is resented,
+   * and the difference is entirely in whether the number appeared before or
+   * after the player agreed to play.
+   */
+  stakes: {
+    freeLabel: 'Free table',
+    stakeLabel: (chips: number) => `${chips} chips`,
+
+    /** Shown at CREATE, before the invite code is generated. */
+    createNotice: (stake: number, pot: number, rake: number, payout: number) =>
+      `You're putting up ${stake} chips. Pot ${pot} — winner takes ${payout}, house takes ${rake}.`,
+
+    /** Shown at JOIN, before the seat is claimed. Same numbers, said again:
+     *  the joining player never saw the create screen. */
+    joinNotice: (stake: number, pot: number, rake: number, payout: number) =>
+      `You're putting up ${stake} chips to sit down. Pot ${pot} — winner takes ${payout}, house takes ${rake}.`,
+    joinConfirm: 'Sit down and post my stake',
+    joinCancel: 'Not this time',
+
+    /** The whole flow, on the win screen. The rake is a line item, not a
+     *  silent difference between the pot and what arrived. */
+    wonTitle: (payout: number) => `You won the pot: +${payout} chips`,
+    wonBreakdown: (pot: number, rake: number, payout: number) =>
+      `${pot} pot − ${rake} house = ${payout}`,
+    lostTitle: (stake: number) => `You lost ${stake} chips`,
+    lostBreakdown: (payout: number) => `Your opponent took the pot: ${payout} chips`,
+
+    /** Void paths. Saying "no house cut" out loud matters — a refund that
+     *  quietly matches the stake is indistinguishable from one that quietly
+     *  does not. */
+    refundedTitle: (stake: number) => `Stake returned: ${stake} chips`,
+    refundedBody: 'That match did not finish, so both stakes came back in full. No house cut.',
+
+    /** Refused BEFORE anything is posted. No debt, no negative balance. */
+    cannotAffordTitle: "You can't cover that stake",
+    cannotAffordBody: (stake: number, chips: number) =>
+      `This table costs ${stake} chips to sit down and you have ${chips}. Win a few free games or top up, then come back.`,
+    opponentCannotAfford:
+      "Your opponent couldn't cover the stake, so nobody was charged and the table is open again.",
+
+    /** The forfeit copy the design insists on: name the timeout, name the
+     *  consequence, and do not imply a fault on our side. */
+    forfeitRevealTitle: 'You ran out of time to reveal',
+    forfeitRevealBody: (payout: number) =>
+      `Your move was locked in but the reveal didn't reach us in time, so the round went to your opponent — and with it the pot of ${payout} chips.`,
+    forfeitCommitTitle: 'You ran out of time to move',
+    forfeitCommitBody: 'The round closed before your move arrived, so it went to your opponent.',
+    wonByForfeitTitle: 'Your opponent ran out of time',
+    wonByForfeitBody: (payout: number) => `The round went to you, and the pot: +${payout} chips.`,
+
+    /** The treasury wallet is refused a seat server-side, at every stake
+     *  including free. Say which account and why — a refusal that doesn't
+     *  name its reason reads as a bug, which is exactly how this one was
+     *  first reported. */
+    treasuryTitle: 'This wallet runs the house',
+    treasuryBody:
+      "You're signed in with the treasury wallet, which collects the house cut. It can't also sit at a table — that would make the books unreadable. Sign in with a player wallet to play.",
+
+    /** Chips are chips. Restated at the point the house starts earning. */
+    noCashValue: 'Chips stay in the game. They have no cash value and cannot be withdrawn.',
+  },
+
   shop: {
     /** Locked tiles say what they cost, in chips, in place. */
     priceLabel: (chips: number) => `${chips} chips`,
@@ -222,6 +338,18 @@ export const copy = {
      * irreversible and the right advice is "leave it with us". Never offer a
      * retry after the money has gone — that is how someone pays twice.
      */
+    /**
+     * The connected wallet is the treasury. A real user hit this by signing in
+     * as the treasury account and pressing Buy: the transfer would have been a
+     * self-transfer, the chain would have recorded a zero delta, and
+     * verification would have correctly refused it — after they had signed and
+     * paid a network fee. The server now refuses to issue the intent at all,
+     * so this is what they see instead, before anything costs them anything.
+     */
+    walletIsTreasuryTitle: 'This wallet cannot buy chips',
+    walletIsTreasuryBody:
+      "You're connected with the wallet that receives payments, so buying would just send USDC to itself — the network would record no payment and nothing could be credited. Connect a different wallet to buy chips.",
+
     failedTitleUnspent: 'Payment not started',
     failedBodyUnspent:
       "Nothing left your wallet and you haven't been charged — this failed before the transaction was signed. You can safely try again.",

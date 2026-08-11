@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AuthState } from '../hooks/useAuth';
-import { detectWallet, shortenAddress } from '../data/wallet';
+import { detectWallet, shortenAddress, WALLET_INSTALL } from '../data/wallet';
 import { isSupabaseConfigured, getSupabase } from '../data/supabaseClient';
 import { copy } from '../constants/copy';
 
@@ -27,6 +27,7 @@ import { copy } from '../constants/copy';
 export function WalletButton({
   auth,
   guestHasProgress = false,
+  onCompare,
 }: {
   auth: AuthState;
   /**
@@ -34,6 +35,13 @@ export function WalletButton({
    * carry across. Drives the notice below.
    */
   guestHasProgress?: boolean;
+  /**
+   * Reopens the entry screen's comparison. This is the "switch later" route
+   * promised on that screen, and it belongs here because this corner is where
+   * a guest already looks when they wonder about accounts. Absent for a
+   * signed-in player, who has nothing left to compare.
+   */
+  onCompare?: () => void;
 }) {
   const [popover, setPopover] = useState<PopoverState>(null);
   const [detected] = useState(() => detectWallet());
@@ -156,6 +164,18 @@ export function WalletButton({
         {label}
       </button>
 
+      {/* What the button is FOR. The entry screen answers it in full; this is
+          the permanent way back to that answer for anyone who chose guest. */}
+      {onCompare && auth.status !== 'connecting' && (
+        <button
+          type="button"
+          onClick={onCompare}
+          className="cursor-pointer text-[0.7rem] text-muted underline decoration-dotted hover:text-ink"
+        >
+          {copy.entry.switchLink}
+        </button>
+      )}
+
       {/* Permanent wallet-detection hint: visible without any click, so a
           visitor with no wallet installed knows immediately WHY the CTA
           won't do anything useful. Yellow instead of red because "you need
@@ -240,29 +260,23 @@ function NoWalletPopover({ onDismiss }: { onDismiss: () => void }) {
       <p className="mt-1.5">
         Install a wallet extension to connect. EvenShock supports both:
       </p>
+      {/* One list, shared with the entry screen — see data/wallet.ts. Two
+          places telling a visitor to install different things is a support
+          question nobody can answer. */}
       <ul className="mt-2 space-y-1.5 text-left">
-        <li>
-          <a
-            href="https://phantom.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold underline hover:text-black"
-          >
-            Phantom
-          </a>{' '}
-          <span className="text-amber-800">(Solana)</span>
-        </li>
-        <li>
-          <a
-            href="https://metamask.io/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold underline hover:text-black"
-          >
-            MetaMask
-          </a>{' '}
-          <span className="text-amber-800">(Ethereum)</span>
-        </li>
+        {WALLET_INSTALL.map((w) => (
+          <li key={w.name}>
+            <a
+              href={w.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold underline hover:text-black"
+            >
+              {w.name}
+            </a>{' '}
+            <span className="text-amber-800">({w.chain})</span>
+          </li>
+        ))}
       </ul>
       <p className="mt-2 text-[0.65rem] text-amber-800">
         Reload the page after installing.

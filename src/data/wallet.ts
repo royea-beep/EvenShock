@@ -34,6 +34,14 @@ export function detectWallet(): WalletDetectResult {
   return { kind: 'none' };
 }
 
+/** Where to get a wallet, for the two places that have to say so: the entry
+ *  screen and the wallet button's no-wallet popover. One list, so they cannot
+ *  drift into recommending different things. */
+export const WALLET_INSTALL = [
+  { name: 'Phantom', chain: 'Solana', url: 'https://phantom.app/' },
+  { name: 'MetaMask', chain: 'Ethereum', url: 'https://metamask.io/' },
+] as const;
+
 export type ConnectResult =
   | { kind: 'ok'; session: Session }
   | { kind: 'no-wallet' }

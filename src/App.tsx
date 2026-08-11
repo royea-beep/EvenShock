@@ -11,6 +11,7 @@ import { useRounds } from './hooks/useRounds';
 import { useEconomy } from './hooks/useEconomy';
 import { usePurchase } from './hooks/usePurchase';
 import { usePrefsMigration } from './hooks/usePrefsMigration';
+import { useEntryChoice } from './hooks/useEntryChoice';
 import { getScreen } from './utils/getScreen';
 import { THEMES } from './constants/themes';
 import { isPricedTheme, matchAward } from './utils/economy';
@@ -21,8 +22,10 @@ import { RoundScreen } from './components/screens/RoundScreen';
 import { MatchEndScreen } from './components/screens/MatchEndScreen';
 import { MuteToggle } from './components/MuteToggle';
 import { FastModeToggle } from './components/FastModeToggle';
+import { FAST_MODE_ENABLED } from './constants/features';
 import { LeaveMatchControl } from './components/LeaveMatchControl';
 import { WalletButton } from './components/WalletButton';
+import { EntryDoor } from './components/screens/EntryScreen';
 import { RoundTrouble } from './components/RoundTrouble';
 // TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
 import { ImpactVariantBadge } from './components/ImpactVariantBadge';
@@ -50,6 +53,10 @@ function App() {
     authenticated: auth.status === 'authenticated',
     onCredited: economy.refresh,
   });
+  // The front door. Asked once, remembered, reopenable from the wallet button.
+  // It renders OVER a mounted, playable app rather than in front of it — see
+  // EntryScreen: if it fails, the game is what's left.
+  const entry = useEntryChoice(auth.status);
   // Derived in the UI layer, deliberately: useGame stays the multiplayer seam.
   const history = useRoundHistory(game);
   const reducedMotion = useReducedMotion();
@@ -186,12 +193,29 @@ function App() {
   return (
     <>
       <MuteToggle muted={muted} onToggle={toggleMuted} />
-      <FastModeToggle fast={fast} onToggle={toggleFast} />
+      {/* Frozen — see constants/features.ts. The hook already forces `fast` to
+          false, so this only removes a control that could do nothing. */}
+      {FAST_MODE_ENABLED && <FastModeToggle fast={fast} onToggle={toggleFast} />}
       <WalletButton
         auth={auth}
         guestHasProgress={!economy.persistent && (economy.state.xp > 0 || economy.state.chips > 0)}
+        // "Switch later" lives where the wallet button already is, which is
+        // where someone who chose guest will look when they wonder what they
+        // turned down.
+        onCompare={entry.reopen}
       />
       <ImpactVariantBadge />
+
+      {entry.showEntry && (
+        <EntryDoor
+          onConnect={auth.connect}
+          onGuest={entry.chooseGuest}
+          onWalletChosen={entry.chooseWallet}
+          // A first visit has no dismiss: the choice is the point. A reopened
+          // comparison does — looking is not un-choosing.
+          onDismiss={entry.choice !== null ? entry.dismiss : undefined}
+        />
+      )}
 
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
           which getScreen maps to 'home', and deliberately keeps `format`. */}

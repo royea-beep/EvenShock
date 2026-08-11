@@ -2,10 +2,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { REVEAL_DELAY_MS, setPace } from '../constants/gameConfig';
 import { setShuffleDuration } from '../utils/shuffle';
 import { local } from '../utils/safeStorage';
+import { FAST_MODE_ENABLED } from '../constants/features';
 
 const STORAGE_KEY = 'evenshock:fast';
 
 function read(): boolean {
+  // The freeze is enforced HERE rather than only at the toggle, because the
+  // toggle is not the only way in. A player who turned fast mode on before the
+  // freeze still has `evenshock:fast=true` in storage, and a signed-in player
+  // carries `profiles.fast_mode` through usePrefsMigration. Hiding the control
+  // while honouring those would leave exactly those players in the mode we
+  // decided nobody should be in, with nothing on screen to change it.
+  if (!FAST_MODE_ENABLED) return false;
+
   // Storage refusing reads as "not fast", which is the right default: the full
   // sequence is what a first-time player should see, and Fast mode is opt-in.
   return local.get(STORAGE_KEY) === 'true';
@@ -43,7 +52,11 @@ export function useFastMode() {
     apply(fast);
   }, [fast]);
 
+  // Both setters are inert while frozen, so nothing — not the toggle, not the
+  // profile migration — can turn it on, and no new `true` is written to
+  // storage that would surprise whoever unfreezes it later.
   const writeAndSet = useCallback((next: boolean) => {
+    if (!FAST_MODE_ENABLED) return;
     setFast(next);
     // If storage refuses, the preference is lost on reload; the session still
     // honours it.
@@ -51,6 +64,7 @@ export function useFastMode() {
   }, []);
 
   const toggleFast = useCallback(() => {
+    if (!FAST_MODE_ENABLED) return;
     setFast((previous) => {
       const next = !previous;
       local.set(STORAGE_KEY, String(next));

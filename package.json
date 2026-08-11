@@ -17,7 +17,9 @@
     "e2e:rounds": "EVENSHOCK_LIVE=1 vitest run --config vitest.live.config.ts",
     "e2e:browser": "node scripts/harness/browser-latency.mjs",
     "e2e:preflight": "node scripts/harness/browser-preflight.mjs",
-    "test:browser": "vitest run --config vitest.browser.config.ts"
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "e2e:entry": "node scripts/harness/entry-door.mjs",
+    "status": "node scripts/deploy-status.mjs"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.15",
