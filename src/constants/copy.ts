@@ -206,9 +206,29 @@ export const copy = {
     credited: (chips: number) => `Credited: +${chips} chips`,
     creditedClose: 'Close',
 
-    failedTitle: 'Payment could not be verified',
+    /**
+     * Two failures that look the same to the code and are completely different
+     * to the person reading them.
+     *
+     * The first version of this said "our reconciler will find it and credit
+     * you — nothing is lost" for both. That copy is right, and reassuring, and
+     * was shown for a failure where the wallet never signed — so the player was
+     * told their money was safe when they had not spent any. Reassurance about
+     * a thing that did not happen reads as confusion, or as a system that does
+     * not know what it did.
+     *
+     * The dividing line is the signature: before it, nothing moved and the
+     * right advice is "try again"; after it, the transfer is on chain and
+     * irreversible and the right advice is "leave it with us". Never offer a
+     * retry after the money has gone — that is how someone pays twice.
+     */
+    failedTitleUnspent: 'Payment not started',
+    failedBodyUnspent:
+      "Nothing left your wallet and you haven't been charged — this failed before the transaction was signed. You can safely try again.",
+
+    failedTitle: 'Payment sent but not yet verified',
     failedBody:
-      "We couldn't verify your payment against the intent. If USDC left your wallet, our reconciler will find it and credit you — nothing is lost. Contact support if this persists.",
+      "Your payment is on the blockchain and we couldn't match it to this purchase yet. Don't pay again — our reconciler scans for it and will credit you. Contact support if it hasn't landed in a few minutes.",
     failedClose: 'Close',
   },
 } as const;

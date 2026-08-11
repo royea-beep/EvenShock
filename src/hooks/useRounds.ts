@@ -38,6 +38,51 @@ const MAX_AUTO_RETRIES = 3;
 const BACKOFF_MS = [400, 1200, 2500];
 const COMMITTED_KEY = 'evenshock:committed-round';
 
+/**
+ * `sessionStorage`, which is allowed to throw.
+ *
+ * Access to it raises in private-browsing modes and wherever site storage is
+ * disabled — which is why three of the four call sites below were already
+ * wrapped. The fourth was not, and it sat on the SUCCESS path: a throw there
+ * landed in the catch that handles submit failures, where a storage error is
+ * indistinguishable from a dropped request. The result was that a round which
+ * had genuinely resolved got retried, retried again, and finished in the
+ * failure state — the game visibly breaking after every round for exactly the
+ * users whose browser refuses storage, while the server had done everything
+ * right.
+ *
+ * Node has no `sessionStorage` at all, so no test could have caught it: this
+ * hook only ever runs in a browser, and the browser it breaks in is one nobody
+ * had opened. Centralised here so the next call site cannot get it wrong.
+ *
+ * Resume is a convenience, never a correctness requirement — the round is
+ * durable server-side and `submit` is idempotent — so failing silently is the
+ * right behaviour rather than a compromise.
+ */
+const session = {
+  get(key: string): string | null {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key: string, value: string): void {
+    try {
+      sessionStorage.setItem(key, value);
+    } catch {
+      /* storage unavailable; the round is still durable server-side */
+    }
+  },
+  remove(key: string): void {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      /* storage unavailable; nothing was stored to begin with */
+    }
+  },
+};
+
 interface Committed {
   matchId: string;
   round: OpenRound;
@@ -126,7 +171,7 @@ export function useRounds(authenticated: boolean): RoundsState {
     async (committed: Committed, attemptNo: number): Promise<void> => {
       try {
         const reveal = await api.submit(committed.round, committed.choice);
-        sessionStorage.removeItem(COMMITTED_KEY);
+        session.remove(COMMITTED_KEY);
         openRoundRef.current = null;
         setTrouble({ kind: 'none' });
         const p = pending.current;
@@ -192,11 +237,7 @@ export function useRounds(authenticated: boolean): RoundsState {
             };
             // Written BEFORE the request goes out. If the tab reloads between
             // here and the answer, the move is not lost — see the resume effect.
-            try {
-              sessionStorage.setItem(COMMITTED_KEY, JSON.stringify(committed));
-            } catch {
-              /* private mode; the round is still durable server-side */
-            }
+            session.set(COMMITTED_KEY, JSON.stringify(committed));
             pending.current = { committed, resolve };
             await attempt(committed, 0);
           } catch (err) {
@@ -228,11 +269,7 @@ export function useRounds(authenticated: boolean): RoundsState {
     openRoundRef.current = null;
     pending.current = null;
     setTrouble({ kind: 'none' });
-    try {
-      sessionStorage.removeItem(COMMITTED_KEY);
-    } catch {
-      /* ignore */
-    }
+    session.remove(COMMITTED_KEY);
   }, []);
 
   const beginMatch = useCallback(
@@ -267,18 +304,9 @@ export function useRounds(authenticated: boolean): RoundsState {
    * often enough to notice.
    */
   useEffect(() => {
-    let raw: string | null = null;
-    try {
-      raw = sessionStorage.getItem(COMMITTED_KEY);
-    } catch {
-      return;
-    }
+    const raw = session.get(COMMITTED_KEY);
     if (!raw) return;
-    try {
-      sessionStorage.removeItem(COMMITTED_KEY);
-    } catch {
-      /* ignore */
-    }
+    session.remove(COMMITTED_KEY);
     let committed: Committed;
     try {
       committed = JSON.parse(raw) as Committed;
