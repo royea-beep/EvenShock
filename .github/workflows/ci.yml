@@ -5,6 +5,13 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # A deploy can fail for reasons that have nothing to do with the code: the
+  # merge of #4 was green through every check and then died on
+  # `Timeout (control socket)` reaching the cPanel FTP host, leaving main
+  # correct and production stale — the exact gap between "merged" and "live"
+  # that this repo has already been bitten by. Without this, the only way to
+  # retry was another commit.
+  workflow_dispatch:
 
 jobs:
   build:
@@ -59,7 +66,13 @@ jobs:
       #   CPANEL_FTP_PASSWORD, CPANEL_FTP_REMOTE_PATH (no trailing slash, e.g.
       #   /public_html/evenshock)
       - name: Deploy to cPanel (FTP)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        # Still never on a pull request — the branch check is what guarantees
+        # that. `workflow_dispatch` is added so a manual run actually deploys;
+        # without it the retry button would run every test and then skip the
+        # only step it was pressed for.
+        if: >-
+          github.ref == 'refs/heads/main' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.CPANEL_FTP_HOST }}
