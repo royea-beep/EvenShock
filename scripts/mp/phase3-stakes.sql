@@ -21,11 +21,17 @@ declare
   A uuid; B uuid; t jsonb; e jsonb; rid bigint; tid uuid; s text; ok boolean;
   outcomes constant jsonb := '{"rock:rock":"tie","rock:paper":"lose","rock:scissors":"win","paper:rock":"win","paper:paper":"tie","paper:scissors":"lose","scissors:rock":"lose","scissors:paper":"win","scissors:scissors":"tie"}';
   wins constant jsonb := '{"single":1,"bo3":2,"bo5":3}';
-  out_ text[] := '{}'; lock1 jsonb; lock2 jsonb; a0 bigint; b0 bigint;
+  out_ text[] := '{}'; lock1 jsonb; lock2 jsonb; a0 bigint; b0 bigint; a1 bigint; v_treas uuid;
 begin
-  select id into A from auth.users order by created_at limit 1;
-  select id into B from auth.users order by created_at desc limit 1;
-  if A is null or A = B then raise exception 'need two distinct auth users'; end if;
+  -- Explicitly NOT the treasury. It is an auth user like any other, and if it
+  -- happened to be the oldest or newest account the whole suite would fail on
+  -- the guard added below — which would be the guard working and the suite
+  -- lying about what it proved.
+  select id into A from auth.users u
+   where not public.is_treasury_wallet(u.id) order by created_at limit 1;
+  select id into B from auth.users u
+   where not public.is_treasury_wallet(u.id) order by created_at desc limit 1;
+  if A is null or A = B then raise exception 'need two distinct non-treasury auth users'; end if;
   perform public.credit_ledger(A,'chips',1000::bigint,'chip_purchase','seedA'||clock_timestamp()::text);
   perform public.credit_ledger(B,'chips',1000::bigint,'chip_purchase','seedB'||clock_timestamp()::text);
   select chips into a0 from public.balances where user_id=A;
@@ -105,25 +111,62 @@ begin
   out_ := out_ || format('lock order          : ascending=%s identical across tables=%s',
     (lock1->>0) < (lock1->>1), lock1 = lock2);
 
-  -- THE TREASURY MAY NOT SIT. Asserted by pointing an existing test account's
-  -- profile at the live treasury address for the length of the transaction —
-  -- the rollback at the end puts it back, and no new identity is minted for a
-  -- test. If payments are unconfigured there is no treasury to impersonate and
-  -- the case is reported as skipped rather than silently passing.
+  -- THE TABLE NOBODY JOINED. Found by this suite: mp_settle's void path
+  -- refunded seat_b unconditionally, and an unjoined table has no seat_b, so
+  -- voiding it raised on ledger.user_id. mp_sweep() runs inside every create
+  -- and every join, so one such table would have broken multiplayer for
+  -- everyone. The second assertion is the one that matters more: escrow runs
+  -- at JOIN, so nothing was posted and NOTHING may come back — a refund to
+  -- seat_a here would mint chips silently. See
+  -- 20260811240000_mp_settle_refunds_what_was_posted.sql.
+  t := public.mp_create_table(A, 'single', 100); tid := (t->>'table_id')::uuid;
+  select chips into a1 from public.balances where user_id = A;
+  e := public.mp_void_match(tid, 'nobody joined');
+  out_ := out_ || format('unjoined void       : refunded=%s A moved %s (escrow never ran, so nothing comes back)',
+    e->'settlement'->>'refunded', (select chips from public.balances where user_id=A) - a1);
+  perform public.mp_sweep();
+  out_ := out_ || format('sweep survives it   : yes (it runs inside every create and join)');
+
+  -- THE TREASURY MAY NOT SIT — create or join, staked or free.
+  --
+  -- Preferring the REAL treasury account when one has signed in: that is the
+  -- identity the guard exists for, and testing an impersonation would test the
+  -- lookup rather than the account. Falling back to pointing test account B's
+  -- profile at the treasury address, which the rollback undoes. Note that
+  -- profiles.wallet_address is UNIQUE, so the fallback is only valid when the
+  -- treasury has never signed in — which is exactly when the real account is
+  -- unavailable. Nothing here is skipped silently.
+  select p.id into v_treas
+    from public.profiles p
+    join public.payment_config c on c.treasury_address = p.wallet_address and c.active
+   limit 1;
   select treasury_address into s from public.payment_config where active limit 1;
-  if s is null then
-    out_ := out_ || 'treasury guard      : SKIPPED (no active payment_config)';
-  else
+
+  if v_treas is null and s is not null then
     update public.profiles set wallet_address = s where id = B;
-    out_ := out_ || format('treasury is_treasury: %s', public.is_treasury_wallet(B));
-    out_ := out_ || format('treasury create 100 : error=%s', coalesce(public.mp_create_table(B,'single',100)->>'error','NONE — GUARD FAILED'));
-    out_ := out_ || format('treasury create free: error=%s (free tables too)', coalesce(public.mp_create_table(B,'single',0)->>'error','NONE — GUARD FAILED'));
+    v_treas := B;
+    out_ := out_ || format('treasury account    : impersonated (treasury has never signed in)');
+  elsif v_treas is not null then
+    out_ := out_ || format('treasury account    : real, %s', left(v_treas::text, 8));
+  end if;
+
+  if v_treas is null then
+    out_ := out_ || format('treasury guard      : NOT TESTED (no active payment_config)');
+  else
+    out_ := out_ || format('is_treasury_wallet  : %s', public.is_treasury_wallet(v_treas));
+    out_ := out_ || format('treasury create 100 : error=%s',
+      coalesce(public.mp_create_table(v_treas,'single',100)->>'error','NONE — GUARD FAILED'));
+    out_ := out_ || format('treasury create free: error=%s (free tables too)',
+      coalesce(public.mp_create_table(v_treas,'single',0)->>'error','NONE — GUARD FAILED'));
     t := public.mp_create_table(A, 'single', 10); tid := (t->>'table_id')::uuid;
-    e := public.mp_join_table(B, t->>'invite_code');
-    out_ := out_ || format('treasury join       : error=%s', coalesce(e->>'error','NONE — GUARD FAILED'));
+    e := public.mp_join_table(v_treas, t->>'invite_code');
+    out_ := out_ || format('treasury join       : error=%s',
+      coalesce(e->>'error','NONE — GUARD FAILED'));
     select format('seat untouched      : seat_b=%s status=%s (no escrow attempted)',
       coalesce(seat_b::text,'null'), status) into s from public.mp_tables where id = tid;
     out_ := out_ || s;
+    out_ := out_ || format('ordinary player     : create error=%s (the guard is not a blanket refusal)',
+      coalesce(public.mp_create_table(A,'single',0)->>'error','none — created'));
   end if;
 
   select bool_and(conserved) into ok from public.mp_conservation_check();
