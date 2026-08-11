@@ -156,6 +156,62 @@ export const copy = {
     connectNoticeCancel: 'Keep playing as guest',
   },
 
+  /**
+   * Stake tables. Every string here names the cut before anyone commits to
+   * anything: a visible rake is respected and a discovered one is resented,
+   * and the difference is entirely in whether the number appeared before or
+   * after the player agreed to play.
+   */
+  stakes: {
+    freeLabel: 'Free table',
+    stakeLabel: (chips: number) => `${chips} chips`,
+
+    /** Shown at CREATE, before the invite code is generated. */
+    createNotice: (stake: number, pot: number, rake: number, payout: number) =>
+      `You're putting up ${stake} chips. Pot ${pot} — winner takes ${payout}, house takes ${rake}.`,
+
+    /** Shown at JOIN, before the seat is claimed. Same numbers, said again:
+     *  the joining player never saw the create screen. */
+    joinNotice: (stake: number, pot: number, rake: number, payout: number) =>
+      `You're putting up ${stake} chips to sit down. Pot ${pot} — winner takes ${payout}, house takes ${rake}.`,
+    joinConfirm: 'Sit down and post my stake',
+    joinCancel: 'Not this time',
+
+    /** The whole flow, on the win screen. The rake is a line item, not a
+     *  silent difference between the pot and what arrived. */
+    wonTitle: (payout: number) => `You won the pot: +${payout} chips`,
+    wonBreakdown: (pot: number, rake: number, payout: number) =>
+      `${pot} pot − ${rake} house = ${payout}`,
+    lostTitle: (stake: number) => `You lost ${stake} chips`,
+    lostBreakdown: (payout: number) => `Your opponent took the pot: ${payout} chips`,
+
+    /** Void paths. Saying "no house cut" out loud matters — a refund that
+     *  quietly matches the stake is indistinguishable from one that quietly
+     *  does not. */
+    refundedTitle: (stake: number) => `Stake returned: ${stake} chips`,
+    refundedBody: 'That match did not finish, so both stakes came back in full. No house cut.',
+
+    /** Refused BEFORE anything is posted. No debt, no negative balance. */
+    cannotAffordTitle: "You can't cover that stake",
+    cannotAffordBody: (stake: number, chips: number) =>
+      `This table costs ${stake} chips to sit down and you have ${chips}. Win a few free games or top up, then come back.`,
+    opponentCannotAfford:
+      "Your opponent couldn't cover the stake, so nobody was charged and the table is open again.",
+
+    /** The forfeit copy the design insists on: name the timeout, name the
+     *  consequence, and do not imply a fault on our side. */
+    forfeitRevealTitle: 'You ran out of time to reveal',
+    forfeitRevealBody: (payout: number) =>
+      `Your move was locked in but the reveal didn't reach us in time, so the round went to your opponent — and with it the pot of ${payout} chips.`,
+    forfeitCommitTitle: 'You ran out of time to move',
+    forfeitCommitBody: 'The round closed before your move arrived, so it went to your opponent.',
+    wonByForfeitTitle: 'Your opponent ran out of time',
+    wonByForfeitBody: (payout: number) => `The round went to you, and the pot: +${payout} chips.`,
+
+    /** Chips are chips. Restated at the point the house starts earning. */
+    noCashValue: 'Chips stay in the game. They have no cash value and cannot be withdrawn.',
+  },
+
   shop: {
     /** Locked tiles say what they cost, in chips, in place. */
     priceLabel: (chips: number) => `${chips} chips`,
