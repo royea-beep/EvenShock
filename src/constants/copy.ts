@@ -222,6 +222,18 @@ export const copy = {
      * irreversible and the right advice is "leave it with us". Never offer a
      * retry after the money has gone — that is how someone pays twice.
      */
+    /**
+     * The connected wallet is the treasury. A real user hit this by signing in
+     * as the treasury account and pressing Buy: the transfer would have been a
+     * self-transfer, the chain would have recorded a zero delta, and
+     * verification would have correctly refused it — after they had signed and
+     * paid a network fee. The server now refuses to issue the intent at all,
+     * so this is what they see instead, before anything costs them anything.
+     */
+    walletIsTreasuryTitle: 'This wallet cannot buy chips',
+    walletIsTreasuryBody:
+      "You're connected with the wallet that receives payments, so buying would just send USDC to itself — the network would record no payment and nothing could be credited. Connect a different wallet to buy chips.",
+
     failedTitleUnspent: 'Payment not started',
     failedBodyUnspent:
       "Nothing left your wallet and you haven't been charged — this failed before the transaction was signed. You can safely try again.",

@@ -203,12 +203,20 @@ function FailedModal({ purchase }: { purchase: Purchase }) {
   // The whole point of `signed`: a failure before the wallet signed cost the
   // player nothing, and telling them their money is safe would be reassuring
   // them about something that never happened.
-  const title = state.signed
-    ? copy.chipsPurchase.failedTitle
-    : copy.chipsPurchase.failedTitleUnspent;
-  const body = state.signed
-    ? copy.chipsPurchase.failedBody
-    : copy.chipsPurchase.failedBodyUnspent;
+  // Three failures, not two. `wallet_is_treasury` is refused before an intent
+  // exists, so it is not merely "unspent" — it is a wallet that can never
+  // work, and saying "try again" would send them round the same loop.
+  const treasury = state.code === 'wallet_is_treasury';
+  const title = treasury
+    ? copy.chipsPurchase.walletIsTreasuryTitle
+    : state.signed
+      ? copy.chipsPurchase.failedTitle
+      : copy.chipsPurchase.failedTitleUnspent;
+  const body = treasury
+    ? copy.chipsPurchase.walletIsTreasuryBody
+    : state.signed
+      ? copy.chipsPurchase.failedBody
+      : copy.chipsPurchase.failedBodyUnspent;
   return (
     <Overlay labelledBy="failed-title">
       <div className="space-y-2">

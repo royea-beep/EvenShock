@@ -72,6 +72,10 @@ const ERROR_STATUS: Record<string, number> = {
   // A mint whose authority the devnet harness holds, named by a mainnet config.
   // 403 rather than 409: no retry of this request turns into a success.
   test_mint_on_mainnet: 403,
+  // The connected wallet IS the treasury, so any transfer it signs is a
+  // self-transfer the chain records as a zero delta. 409: the request is
+  // coherent, the wallet is the thing that cannot work.
+  wallet_is_treasury: 409,
 };
 
 const isChoice = (v: unknown): v is Choice => CHOICES.includes(v as Choice);
