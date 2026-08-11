@@ -51,59 +51,60 @@ gets its own treatment, as the brief allows.
 
 ---
 
-## 1. Commitment generation: client-side, and the server must never see a nonce
+## 1. Commitment generation: server-held pairs with signed receipts
 
-**Decision: the client generates the nonce and computes the hash. The server
-stores an opaque digest and issues the round token that scopes it.**
+**REVERSED from the first draft of this document, which argued for client-held
+nonces. The reversal and its reason are recorded here rather than edited away,
+because the first argument was not wrong — it was answering the wrong
+question.**
 
-The brief frames this as a trade. It is not, once you follow the server-issued
-nonce through: there are **three possible moves**. A server that issued the
-nonce can hash all three against a player's commitment and know their move
-instantly. It would take a few microseconds. That directly violates the stated
-requirement that no player's move exists server-side before both commitments
-are in — not as a leak, as a one-line computation.
+The original argument stands on its own terms: a server that issues the nonce
+can hash all three possible moves and learn the player's move immediately, so a
+client-held nonce is the only way to keep the server blind. That is true, and it
+is not the constraint that matters once chips are at stake.
 
-So the nonce must be a secret the server does not hold. 32 bytes from
-`crypto.getRandomValues`, exactly as the bot path already does it, only now on
-the client.
+**What matters more is crash-resilience.** A client-held nonce means the secret
+that proves your move lives in `sessionStorage`. This project has already been
+burned there once: storage access *throws* in private browsing, and the bug it
+caused took a round that had resolved correctly and showed it as failed. Tying a
+staked round to that same storage turns every tab crash, every private-browsing
+session and every "clear site data" into a forfeited stake. Ideological purity
+about server blindness is not worth a player losing real chips to a browser
+setting.
 
-### What the digest must bind
+So: **the server generates the nonce, stores the `(move, nonce)` pair, and hands
+the player a signed receipt for the commitment.**
 
-`sha256(move ‖ nonce)` — the current `computeCommitment` — is **not sufficient
-for two humans**, and this is the part I most want reviewed.
+### The trade, stated honestly
 
-**The copy attack.** If B can see A's commitment before committing, B submits
-*the same digest*. B cannot reveal it — B has no nonce — but B does not need to:
-B waits for A's reveal, then replays A's `(move, nonce)` as its own. The hash
-matches, so the server accepts it, and B has played whatever A played. Every
-round becomes a tie. It costs the attacker nothing and denies the opponent any
-win, forever.
+The server is now in the trust base. It could, in principle, look at A's move
+before B commits. That is the cost, it is real, and the answer is not to deny it
+but to make it **inspectable**:
 
-Two independent defences, and I want both:
+1. **The receipt is a signature over the commitment, issued before either side
+   reveals.** ECDSA P-256, the same curve the Edge Function already verifies
+   JWTs with. The public key is published, so the receipt is verifiable by
+   anyone — not just by us.
+2. **The digest binds round, player and move:**
+   `sha256(round_id ‖ user_id ‖ move ‖ nonce)`. The copy attack from the first
+   draft still applies with two humans and this still defeats it: a digest
+   copied from A cannot be revealed by B, because B's is verified against B's
+   user id.
+3. **The `(move, nonce)` pair lives in a column no client has a SELECT grant
+   on**, exactly as the bot path's `rounds.opponent_choice` does today.
+4. **Reveal-integrity is auditable after the fact.** `verify_match_integrity(match_id)`
+   re-derives every round's digest from the stored pair and compares it to the
+   receipt that was signed before the reveal. If the server ever revealed
+   something other than what it committed, the recomputed digest will not match
+   a signature it already published, and the audit says so. "The server is in
+   the trust base" then means "and here is the trail that proves it behaved",
+   rather than "and you'll have to take our word for it".
 
-1. **Bind the digest to the player and the round:**
-   `sha256(round_id ‖ user_id ‖ move ‖ nonce)`. A digest copied from A can never
-   be revealed by B, because B's digest is verified against *B's* user id. This
-   is the load-bearing one — it holds even if the server leaks everything.
-2. **Never release either commitment until both are recorded.** Defence in
-   depth, and it costs nothing.
+The property this buys is weaker than a client-held nonce and stronger than
+nothing: we cannot prove the server did not *peek*, but we can prove it did not
+*change its mind* — and changing its mind is the attack that decides matches.
 
-Binding to `round_id` additionally kills cross-round replay of a
-`(commitment, reveal)` pair.
-
-This means extending the shared `computeCommitment` rather than reusing it
-as-is — a new `computeRoundCommitment(roundId, userId, move, nonce)` in
-`src/utils/rules.ts`, alongside the existing one, which the bot path keeps using
-unchanged. Both sides compute it from the same file, same as today.
-
-### The cost, stated plainly
-
-A client that loses its nonce cannot reveal, and **we cannot distinguish that
-from a client refusing to reveal.** They must therefore be treated identically,
-which the timeout table does: non-reveal loses the round. Mitigation is the
-existing discipline — write `(round_id, move, nonce)` to `sessionStorage` via
-`safeStorage` *before* the commit request goes out, so a reload recovers it.
-Same pattern as `COMMITTED_KEY` today.
+---
 
 ---
 
@@ -120,15 +121,35 @@ tested, and this is the part of a multiplayer game that rots.
 | Invite code unredeemed | 30 min | — | Code dead | — |
 | Round open, no commitments | 20 s from round open | both silent | Round void, replayed. Two consecutive → match void | Refund both |
 | Round open, one commitment | 20 s | one silent | Silent player **forfeits the round**. Two forfeits in a match → forfeits the match | Pot to opponent on match forfeit |
-| Both committed, awaiting reveals | 10 s from the *second* commitment | one silent | Revealer **wins the round outright**, whatever the moves were | — |
-| Both committed, neither reveals | 10 s | both silent | Round void, replayed | — |
+| Both committed, awaiting reveals | **90 s** from the *second* commitment | one silent | Revealer **wins the round outright**, whatever the moves were. The forfeiting player is told exactly that — see below | — |
+| Both committed, neither reveals | 90 s | both silent | Round void, replayed | — |
 | Player disconnected mid-match | 60 s from last presence heartbeat | no return | Match forfeit to the present player | Pot to them |
 | Match with no activity | 10 min | — | Match void | Refund both |
 | Both players idle two rounds running | — | — | Match void (draw) | Refund both |
 
 **20 s to commit** is generous against a ~1 s decision and short enough not to
-bore; **10 s to reveal** is tight because no human is in that loop — the client
-reveals automatically the moment it learns both commitments landed.
+bore. **90 s to reveal** is deliberately loose for Phase 1: the reveal is a
+round trip a healthy client makes in well under a second, so the window is not
+sized for the happy path at all — it is sized for a player who backgrounded the
+tab, lost signal in a lift, or reloaded, and it exists so that recovering costs
+them nothing.
+
+**It is also 80-odd seconds of thinking time for someone who wants it**, and I
+am not going to argue about the right number without data. So the reveal
+latency distribution is instrumented from the first day: every reveal records
+the delay between the second commitment and the reveal landing, and
+`health_digest` reports p50/p95/p99. If real humans come in at p95 under ten
+seconds, the window shrinks to something with a small multiple of that, on
+evidence.
+
+### Telling the truth to whoever lost
+
+When a round is forfeited on a missed reveal, the player who missed it sees
+**why**, not a generic expiry. "Match expired" and "you did not reveal in time,
+so this round went to your opponent" are the same event and completely
+different messages, and the second is the one that lets a player understand what
+happened to them. The forfeiting side's copy names the timeout, names the
+consequence, and does not imply a fault on our side.
 
 ### Why non-reveal is strictly losing
 
