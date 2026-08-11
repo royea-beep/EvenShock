@@ -105,6 +105,13 @@ describe('guest progress does not migrate to an account', () => {
 
     // The account's own balance, not the browser's.
     expect(state).toEqual({ xp: 0, chips: 0, owned: [] });
+    // Read something else off localStorage so the spy proves it is wired in.
+    // Without this positive read the negative assertion below would pass just
+    // as well against a spy that was never installed or a code path that never
+    // touched localStorage at all — the exact "provoke → assert nothing"
+    // shape that hides broken detection.
+    globalThis.localStorage.getItem('any-other-key');
+    expect(getItem).toHaveBeenCalled();
     expect(getItem).not.toHaveBeenCalledWith(GUEST_KEY);
   });
 
