@@ -253,23 +253,9 @@ begin
          resolved_at = now()
    where id = p_round_id;
 
-  -- Reveal latency, sampled for every round that got as far as two commitments.
-  -- Instrumented from day one deliberately: the 90s reveal window is loose on
-  -- purpose and the argument for shrinking it should be a distribution, not an
-  -- opinion. Recorded even for timeouts, where the delay IS the window.
-  if r.both_committed_at is not null then
-    insert into public.integrity_events (user_id, kind, source, detail)
-    values (
-      t.seat_a, 'mp_reveal_latency', 'server',
-      jsonb_build_object(
-        'table_id', r.table_id, 'round', r.round_number, 'resolution', p_resolution,
-        'a_ms', case when r.a_revealed_at is not null
-                then extract(epoch from (r.a_revealed_at - r.both_committed_at)) * 1000 end,
-        'b_ms', case when r.b_revealed_at is not null
-                then extract(epoch from (r.b_revealed_at - r.both_committed_at)) * 1000 end
-      )
-    );
-  end if;
+  -- Reveal latency is sampled here; the table it goes to and the reason it is
+  -- NOT integrity_events are in the very next migration, which the Phase 0
+  -- test forced within minutes of this one being applied.
 
   -- Score recomputed from resolved rounds rather than incremented, so a retry
   -- or a double sweep cannot inflate it.
