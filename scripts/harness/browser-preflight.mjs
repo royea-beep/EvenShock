@@ -217,6 +217,19 @@ const clickBy = async (role, name, timeout = 15_000) => {
   }
 };
 
+// THE FRONT DOOR COMES FIRST, exactly as it does for a player.
+//
+// CI caught this: adding the entry screen turned every assertion below into
+// `started: false`, because the door was over the Start button and this harness
+// did not know it existed. That is the harness being out of date rather than
+// the app being broken — but it is also the only automated proof that the door
+// can be dismissed in a browser that refuses storage, which is the one place
+// the choice cannot be remembered. Failing to click it here is a real failure.
+//
+// Tolerant of the door being absent, because it is absent for a visitor who
+// has already chosen and this file must not care which of those it is.
+await clickBy('button', 'Play as guest', 5_000);
+
 // Guest mode plays locally, but it runs through the identical useRounds path —
 // including the success-path storage write that used to throw.
 const storage = { started: false, played: 0, advanced: false };
