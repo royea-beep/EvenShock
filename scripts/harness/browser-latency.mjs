@@ -122,32 +122,59 @@ await page.exposeFunction('__evenshockSign', (bytes) => [
 // throws in the browser at signAndSendTransaction and the app sees the shape
 // it would see from a real wallet.
 await page.exposeFunction('__evenshockSignAndSendUnsignedTx', async (rawUnsigned) => {
-  const tx = Transaction.from(Uint8Array.from(rawUnsigned));
-  tx.partialSign(player);
-  const signed = tx.serialize();
-  const res = await fetch(RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'sendTransaction',
-      params: [Buffer.from(signed).toString('base64'), { encoding: 'base64' }],
-    }),
-  });
-  const doc = await res.json();
-  if (doc.error) {
-    console.log(`  [shim] sendTransaction RPC error: ${JSON.stringify(doc.error)}`);
-    throw new Error(doc.error.message ?? 'sendTransaction failed');
-  }
-  const signature = doc.result;
-  console.log(`  [shim] tx submitted: ${signature}`);
-
-  // Now wait for confirmation, the way a real wallet does. Use the same
-  // Connection Node already has for latency-independent polling.
   const { Connection } = await import('@solana/web3.js');
   const conn = new Connection(RPC_URL, 'confirmed');
-  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
+
+  // Rebuild the transaction from scratch rather than mutating the one the app
+  // built. Two reasons:
+  //
+  // 1. The app's blockhash comes from browserRpc() — currently
+  //    https://api.devnet.solana.com — while the shim broadcasts to RPC_URL
+  //    (Helius in the harness env). Devnet's public RPC and Helius are not
+  //    slot-synced, so a hash minted on one is often "not found" on the other
+  //    at broadcast time. A real wallet doesn't hit this because Phantom owns
+  //    both fetch and broadcast; the shim can just use a hash from the RPC
+  //    that will receive the send.
+  //
+  // 2. Transaction.from() + mutate recentBlockhash + partialSign() lands a
+  //    valid signature at RPC (RPC returns a signature) but validators drop
+  //    the tx — the signature covers the pre-mutation message. Extracting
+  //    instructions and building a fresh Transaction sidesteps that.
+  //
+  // 'finalized' commitment because Helius load-balances across backends: a
+  // 'confirmed' hash from one backend often is not yet visible to the one
+  // that receives the send. A finalized hash has propagated everywhere.
+  const received = Transaction.from(Uint8Array.from(rawUnsigned));
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('finalized');
+  const tx = new Transaction();
+  for (const ix of received.instructions) tx.add(ix);
+  tx.feePayer = received.feePayer ?? player.publicKey;
+  tx.recentBlockhash = blockhash;
+  console.log(`  [shim] rebuilt tx with blockhash ${blockhash.slice(0, 12)}… (finalized)`);
+
+  tx.partialSign(player);
+
+  // Simulate first so a rejected tx tells us exactly why, not "expired 60s
+  // later." Preflight the same way the RPC would but with the same node we're
+  // about to send to, so blockhash-visibility issues can't mask a real error.
+  const sim = await conn.simulateTransaction(tx);
+  if (sim.value.err) {
+    console.log(`  [shim] simulateTransaction failed: ${JSON.stringify(sim.value.err)}`);
+    if (sim.value.logs) for (const l of sim.value.logs) console.log(`      ${l}`);
+    throw new Error(`simulate: ${JSON.stringify(sim.value.err)}`);
+  }
+
+  const signed = tx.serialize();
+  const signature = await conn.sendRawTransaction(signed, {
+    skipPreflight: true,
+    maxRetries: 5,
+  });
+  console.log(`  [shim] tx submitted: ${signature}`);
+
+  // Confirm the way a real wallet does — return only after the network has
+  // actually accepted the tx, so signAndSendTransaction rejecting means a
+  // real rejection the app can render, not a signature for a tx that never
+  // landed.
   try {
     const status = await conn.confirmTransaction(
       { signature, blockhash, lastValidBlockHeight },
