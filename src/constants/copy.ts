@@ -5,6 +5,58 @@ import type { Choice, MatchFormat, RoundOutcome } from '../types/game';
  * component — keeps this file the single place to translate later.
  */
 export const copy = {
+  /**
+   * The front door. Two paths, stated in full, chosen deliberately.
+   *
+   * The bullets are the whole point of the screen: guest-by-default with a
+   * caption meant nobody arriving at the site knew an account existed, let
+   * alone what it unlocked. So each path lists what it actually gets, and the
+   * guest path names its limit in the same breath rather than in a footnote —
+   * the wallet path only sells itself honestly if the guest one is described
+   * fairly.
+   */
+  entry: {
+    title: 'How do you want to play?',
+    subtitle: 'Pick once. You can switch whenever you like.',
+
+    guestTitle: 'Play as guest',
+    guestTagline: 'Start now, nothing to install.',
+    guestBullets: [
+      'The whole game against the bot',
+      'XP, chips and every free look',
+      'No account, no wallet, no sign-in',
+    ],
+    guestLimit: 'Progress is saved in this browser only — clearing it clears everything.',
+    guestCta: 'Play as guest',
+
+    walletTitle: 'Connect a wallet',
+    walletTagline: 'An account that follows you.',
+    walletBullets: [
+      'XP and chips kept on the server, on any browser',
+      'Buy chips and unlock the paid looks',
+      'Play a friend with an invite code',
+      'Free tables or chip stakes, winner takes the pot',
+    ],
+    walletLimit: 'Starts a fresh account — guest progress stays in this browser.',
+    walletCta: 'Connect wallet',
+    walletNeeds: 'Needs a wallet extension: Phantom or MetaMask.',
+    walletConnecting: 'Connecting…',
+    /** Tag on the bullets that describe something the server can do and the
+     *  app cannot yet. Removed by flipping MULTIPLAYER_UI_ENABLED, not by
+     *  editing the bullet — a promise should stop being provisional in one
+     *  place. */
+    soonTag: 'soon',
+
+    /** Connecting can fail, and the door must not trap anyone when it does. */
+    failedRejected: 'Sign-in was cancelled. You can still play as a guest.',
+    failedNoWallet: 'No wallet extension found. Install one and reload — or play as a guest now.',
+    failedError: (message: string) => `Sign-in failed: ${message}`,
+
+    /** The way back in, next to the wallet button. */
+    switchLink: 'Guest or wallet?',
+    dismiss: 'Close',
+  },
+
   home: {
     title: 'EvenShock',
     subtitle: 'Rock. Paper. Scissors. Outsmart the bot.',

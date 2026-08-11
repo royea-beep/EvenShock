@@ -29,3 +29,19 @@
  * To re-enable: VITE_ENABLE_FAST_MODE=true, and rebuild.
  */
 export const FAST_MODE_ENABLED = import.meta.env.VITE_ENABLE_FAST_MODE === 'true';
+
+/**
+ * MULTIPLAYER EXISTS SERVER-SIDE AND NOT YET IN THIS APP.
+ *
+ * The tables, escrow, rake and commit-reveal protocol are deployed and tested;
+ * no screen in `src/` calls any of it. The entry screen advertises playing a
+ * friend because that is what connecting a wallet is FOR, and hiding the reason
+ * would defeat the point of the screen — so the bullets carry a "soon" tag
+ * while this is false, and flipping it to true removes the tag everywhere at
+ * once.
+ *
+ * This is the honest middle between promising a button that does not exist and
+ * pretending the feature is not coming. It flips in the same change that ships
+ * the multiplayer UI, never before.
+ */
+export const MULTIPLAYER_UI_ENABLED = import.meta.env.VITE_ENABLE_MULTIPLAYER === 'true';

@@ -166,3 +166,7 @@ picker-shots/
 # why it is a local file and not a deployed secret — the Edge Function must
 # never be able to originate a payment, even a fake one.
 .devnet/
+
+# Harness artefacts: the entry-door screenshots and anything else a browser run
+# writes. Evidence for the run that produced it, not a committed baseline.
+test-results/
