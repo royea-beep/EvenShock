@@ -296,8 +296,9 @@ argue about whether they are exploitable.
    minute a attacker expects to wait about 10⁵ years per code, so the rate limit
    is doing the work and the length is comfortable rather than load-bearing.
 4. **Table TTL sweep**, opportunistic on the caller's own tables when they next
-   list or create — the same pattern as `expire_stale_intents`, and for the same
-   reason: no cron that can silently stop.
+   list or create — **plus a cron backstop**. I originally wrote "no cron"; §7
+   explains why the caps-poker review changed my mind, and why today's stuck
+   payment intent is the same lesson at small scale.
 5. **Stake affordability re-checked inside the escrow transaction**, never from
    the lobby's view of the balance.
 
@@ -345,3 +346,168 @@ phase introduced it is never in question.
 AA contrast on all eight themes, no overflow, reduced motion honoured, the leak
 harness re-run against the two-player flow, migrations committed before they are
 applied, tests extended rather than appended.
+
+---
+
+## 7. What caps-poker taught, and what I am not taking from it
+
+Reviewed `royea-beep/caps-poker` for the four things asked: the seating schema,
+pot escrow, realtime, and scars. The scars turned out to be worth more than the
+design, exactly as predicted — and one of the four questions has an answer
+nobody expected.
+
+### The headline: there is no pot escrow to compare against
+
+The brief assumed caps-poker had solved this. It has not. There is no pot, no
+escrow, and no two-sided settlement anywhere in it. Chips move through one RPC:
+
+```ts
+record_hand_net(p_device_id, p_net) -> { ok, new_balance, net, clamped }
+```
+
+**The client reports its own net result.** The server clamps it to ±10000 and
+dedups on `(device_id, hand_id)`, and that is the entire integrity story for a
+hand's chips. Clamping bounds the damage from a lie; it does not detect one.
+
+So §3 of this document has no prior art to borrow, and the honest thing is to
+say so rather than dress up a pattern that does not exist. Our escrow —
+stake-in-the-same-transaction, payout-in-the-same-transaction-as-the-result,
+conservation asserted per match — is new work, and it is also the single
+biggest divergence between the two projects.
+
+### 1. Seating schema — not borrowing it, and the reason is the scars
+
+caps-poker has `game_rooms` + `room_players(seat_index, is_host, device_id)`
+with a denormalised `current_players` counter. That shape is right for N seats.
+It is wrong for two, and its own migration history says why:
+
+- **Seat collision after a leave.** `join_table` originally assigned
+  `seat_index = current_players`. Two players in seats 0 and 1; seat 0 leaves;
+  `current_players` is 1; the next joiner gets seat 1 — colliding with the
+  sitting player. The fix in the hardening migration is a `generate_series`
+  scan for *"smallest unused seat in [0, max_players) — never collides after a
+  leave"*.
+- **The counter desyncs.** `leave_table` clamps with `GREATEST(0, current_players - v_deleted)`,
+  and a clamp against negatives is a scar by itself. The RLS lockdown migration
+  spells out the mechanism: a `players_leave_own` DELETE policy let a client
+  delete its roster row directly, bypassing the decrement, *"leaving a room that
+  reads FULL with an empty seat: un-joinable and un-startable."*
+
+**What we do instead: two columns.** `tables.seat_a` and `tables.seat_b`, both
+`uuid references auth.users`. Claiming a seat is one conditional update:
+
+```sql
+update tables set seat_b = p_user_id
+ where id = p_table_id and seat_b is null and seat_a <> p_user_id
+```
+
+No roster table, no counter to desync, no seat index to collide, no host
+election, and "is this player seated" is `auth.uid() in (seat_a, seat_b)` — a
+column comparison rather than a join, which matters because it is also the
+Realtime RLS policy. Both scars above are not fixed so much as **made
+unreachable**: there is no structure left for them to live in.
+
+### 2. Abandonment — I am changing my position on cron
+
+caps-poker ends rooms with `finish_table`, called by the host client. It did not
+hold. The migration comment on `cleanup_expired_rooms` says it was *"Hardened in
+Phase 3 to self-heal stale 'playing' rooms"*, and the sweep now force-finishes
+any room still `playing` two hours after it started, on `pg_cron` every 2
+minutes.
+
+§5 of this document originally said "no cron: a sweeper that silently stops is
+worse than one that runs when it is needed." **That was wrong for anything
+holding escrow**, and I want to be specific about why I changed my mind rather
+than quietly editing it:
+
+- An opportunistic sweep only runs when *someone comes back*. The whole failure
+  mode of an abandoned staked match is that nobody comes back.
+- We proved this on ourselves the same day. The stuck payment intent found this
+  session sat `pending` past its expiry precisely because
+  `expire_stale_intents` was called only from `create_payment_intent` — the
+  action of a player who had already given up. Same shape, smaller stakes.
+
+So: **opportunistic sweep for promptness, cron backstop for the ones nobody
+returns to.** A cron that stops is a monitoring problem; chips locked forever is
+a support problem, and the second is worse. The backstop needs its own alarm —
+a `stale_escrow_count` in the health digest, so a silent cron is visible.
+
+Also adopting their **terminal-state purge**: delete finished tables after a day
+so the lobby table stays small. Tables only — matches are history and stay.
+
+### 3. Realtime — their channel authorization never met reality
+
+The question was whether their channel authorization survived contact with
+reality. It did not, because there is none to survive: **no `private: true`
+anywhere in the codebase.** Every channel is public, which means every RLS
+policy on `realtime.messages` is inert by construction.
+
+What that costs them, in `hooks/useRealtimeGame.ts`:
+
+```ts
+// Hand directed to this player
+ch.on('broadcast', { event: `hand:${playerName}` }, ...)
+```
+
+Hole cards are broadcast on a public channel and "directed" to a player **by
+event name**. An event name is not an access control. Anyone who knows the
+session id can subscribe to `caps:game:<sessionId>`, listen for
+`hand:<any player name>`, and read every player's cards. The dealing is
+client-side too — `dealCards` runs on whichever client is host — so the trust
+model is inverted from ours end to end.
+
+The most instructive part is not the bug. It is that their own
+`MULTIPLAYER_RESEARCH.md` identified both failure modes before any of it was
+built:
+
+> "Broadcast is ephemeral — if a player disconnects and reconnects, they miss
+> messages (need Postgres fallback)"
+
+> "Secret state — **Problem:** … visible to all room members. Need a server
+> component to manage secrets"
+
+The shipped code has no Postgres fallback and no server component for secrets.
+**The scar is the gap between the design document and the code**, which is a
+pointed thing to find while writing a design document. It is the argument for
+§6's Phase 0: the protocol gets a headless test suite in the same phase it is
+written, so "we knew that" cannot drift from "we did that".
+
+Nothing here changes §4 — the channel carries doorbells with no payload — but it
+raises my confidence in it considerably. This is what the alternative looks like
+in production.
+
+### 4. What I am taking
+
+| From caps-poker | Why |
+|---|---|
+| **The kill-switch pattern** | `join_table` hardening ships *inert*, gated on `app_config.join_requires_session`, default false: apply → verify → flip → *"flip back instantly if it regresses"*. Rollback in seconds with no deploy. Adopting it for both the Realtime private-channel cutover and the §2 timeout durations, which are already a config table. |
+| **`FOR UPDATE` before claiming a seat** | Confirms the plan against live code that has taken real concurrent joins. |
+| **Idempotent join** | Re-joining returns the existing seat rather than erroring — the reconnect path gets it free. |
+| **Terminal-state purge with a retention window** | Keeps the lobby table small without touching history. |
+| **Cron backstop** | Position changed; see above. |
+
+### 5. What I am deliberately not taking
+
+| Not taking | Why |
+|---|---|
+| `game_rooms` + `room_players` + `current_players` | N-seat machinery, and its two worst bugs are structural. Two columns. |
+| Client-supplied identity (`p_player_id uuid`) | Their own migration: *"SPOOFABLE — a caller can claim a seat as any uuid it likes"*, and *"the safety there is luck. Fixing identity is what turns that luck into a control."* Our Edge Function already derives the user from a verified JWT signature and never from the body. Nothing to adopt; this is the thing to avoid. |
+| Membership-based RLS write policies | *"RLS cannot scope COLUMNS, so membership grants the WHOLE ROW"* — a seated player could rewrite `status`, `game_config`, `max_players`, or their own `seat_index`, which they note *"is a seat-swap primitive."* The client keeps zero write grants on tables, matches and rounds; every mutation goes through the Edge Function. |
+| Host-authoritative anything | Dealing, state and secrets all originate on a client. The server refereeing is the entire premise here. |
+| `anon` grants on lobby RPCs | Multiplayer is signed-in only, per the brief, and I am not bending that. |
+| 4-character room codes | 32⁴ ≈ 1M against our 32⁸ ≈ 1.1 × 10¹². |
+| `device_id` as an identity fallback | It exists there because the app runs anonymous auth. We have wallets. |
+
+### 6. The scar I am taking most seriously
+
+The header of `20260625000000_mp_lobby_rpcs.sql`:
+
+> "These SECURITY DEFINER functions … were originally APPLIED LIVE via the
+> Supabase MCP across the Jun-24/25 sessions and were NOT previously captured as
+> repo migrations — so a fresh DB rebuild would have lacked them."
+
+Six functions live in production and absent from the repo, found late and
+back-filled by dumping `pg_get_functiondef`. That is precisely the failure this
+project hit twice — once losing a migration to a container restart. Independent
+confirmation that "apply now, commit later" is not a personal lapse but the
+default failure of this workflow. Push before applying, every time.
