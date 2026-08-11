@@ -21,6 +21,7 @@ import { RoundScreen } from './components/screens/RoundScreen';
 import { MatchEndScreen } from './components/screens/MatchEndScreen';
 import { MuteToggle } from './components/MuteToggle';
 import { FastModeToggle } from './components/FastModeToggle';
+import { FAST_MODE_ENABLED } from './constants/features';
 import { LeaveMatchControl } from './components/LeaveMatchControl';
 import { WalletButton } from './components/WalletButton';
 import { RoundTrouble } from './components/RoundTrouble';
@@ -186,7 +187,9 @@ function App() {
   return (
     <>
       <MuteToggle muted={muted} onToggle={toggleMuted} />
-      <FastModeToggle fast={fast} onToggle={toggleFast} />
+      {/* Frozen — see constants/features.ts. The hook already forces `fast` to
+          false, so this only removes a control that could do nothing. */}
+      {FAST_MODE_ENABLED && <FastModeToggle fast={fast} onToggle={toggleFast} />}
       <WalletButton
         auth={auth}
         guestHasProgress={!economy.persistent && (economy.state.xp > 0 || economy.state.chips > 0)}
