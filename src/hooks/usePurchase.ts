@@ -35,7 +35,17 @@ export type PurchaseState =
   | { kind: 'sending'; intent: PurchaseIntent }
   | { kind: 'pending'; intent: PurchaseIntent; signature: string; startedAt: number }
   | { kind: 'credited'; chipsCredited: number; chipsTotal: number }
-  | { kind: 'failed'; code: string; humanCause?: string };
+  /**
+   * `signed` splits the two failures that feel identical and are not.
+   *
+   * Before the wallet signs, nothing has left the player's wallet and there is
+   * nothing to reconcile — the honest thing to say is "try again". After it
+   * signs, the money is gone and irreversible, and the honest thing to say is
+   * "we will find it". Telling someone their money is safe when they never
+   * spent any is confusing at best; saying "try again" after they have paid
+   * would invite a second payment, which is worse.
+   */
+  | { kind: 'failed'; code: string; humanCause?: string; signed: boolean };
 
 const CONFIRM_POLL_MS = 3_000;
 const CONFIRM_TIMEOUT_MS = 180_000;
@@ -95,9 +105,9 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
    *  fresh-buy path and the "resume with a pay-now" path. */
   const payAndPoll = useCallback(
     async (intent: PurchaseIntent) => {
-      if (!client) return setState({ kind: 'failed', code: 'client_missing' });
+      if (!client) return setState({ kind: 'failed', code: 'client_missing', signed: false });
       const wallet = getBrowserSolanaWallet();
-      if (!wallet) return setState({ kind: 'failed', code: 'wallet_missing' });
+      if (!wallet) return setState({ kind: 'failed', code: 'wallet_missing', signed: false });
 
       setState({ kind: 'wallet', intent });
       let signature: string;
@@ -114,6 +124,10 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
           kind: 'failed',
           code: 'wallet_error',
           humanCause: err instanceof Error ? err.message : 'wallet failure',
+          // The throw came from sendUsdc, which returns only once the wallet
+          // has signed AND sent. Reaching here means it never got that far, so
+          // nothing left the player's wallet.
+          signed: false,
         });
         return;
       }
@@ -132,7 +146,9 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
           return;
         }
         if (result.kind === 'failed') {
-          setState({ kind: 'failed', code: result.code });
+          // A signature exists, so the transfer is on chain and irreversible
+          // whatever the server made of it. Reconciliation is the promise here.
+          setState({ kind: 'failed', code: result.code, signed: true });
           return;
         }
         // pending — schedule another poll unless we've been at this too long.
@@ -154,14 +170,14 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
   );
 
   const startFresh = useCallback(async () => {
-    if (!client) return setState({ kind: 'failed', code: 'client_missing' });
+    if (!client) return setState({ kind: 'failed', code: 'client_missing', signed: false });
     setState({ kind: 'creating' });
     try {
       const intent = await createIntent(client, USDC_AMOUNT);
       await payAndPoll(intent);
     } catch (err) {
       const code = err instanceof Error ? err.message : 'create_failed';
-      setState({ kind: 'failed', code });
+      setState({ kind: 'failed', code, signed: false });
     }
   }, [client, payAndPoll]);
 
@@ -183,7 +199,7 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
         await startFresh();
       } catch (err) {
         const code = err instanceof Error ? err.message : 'precheck_failed';
-        setState({ kind: 'failed', code });
+        setState({ kind: 'failed', code, signed: false });
       }
     })();
   }, [authenticated, busy, client, startFresh]);
@@ -195,7 +211,7 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
       await startFresh();
     } catch (err) {
       const code = err instanceof Error ? err.message : 'tos_failed';
-      setState({ kind: 'failed', code });
+      setState({ kind: 'failed', code, signed: false });
     }
   }, [client, startFresh]);
 

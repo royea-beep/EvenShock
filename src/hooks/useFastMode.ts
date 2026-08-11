@@ -1,18 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { REVEAL_DELAY_MS, setPace } from '../constants/gameConfig';
 import { setShuffleDuration } from '../utils/shuffle';
+import { local } from '../utils/safeStorage';
 
 const STORAGE_KEY = 'evenshock:fast';
 
 function read(): boolean {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === 'true';
-  } catch {
-    // Private-mode Safari and blocked storage both throw here. Defaulting to
-    // the full sequence is the right failure: it is what a first-time player
-    // should see, and Fast mode is opt-in.
-    return false;
-  }
+  // Storage refusing reads as "not fast", which is the right default: the full
+  // sequence is what a first-time player should see, and Fast mode is opt-in.
+  return local.get(STORAGE_KEY) === 'true';
 }
 
 /** Pushes the pace into the modules that own the timings, then reports it. */
@@ -49,21 +45,15 @@ export function useFastMode() {
 
   const writeAndSet = useCallback((next: boolean) => {
     setFast(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, String(next));
-    } catch {
-      // Preference is lost on reload; the session still honours it.
-    }
+    // If storage refuses, the preference is lost on reload; the session still
+    // honours it.
+    local.set(STORAGE_KEY, String(next));
   }, []);
 
   const toggleFast = useCallback(() => {
     setFast((previous) => {
       const next = !previous;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, String(next));
-      } catch {
-        // Preference is lost on reload; the session still honours it.
-      }
+      local.set(STORAGE_KEY, String(next));
       return next;
     });
   }, []);

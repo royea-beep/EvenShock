@@ -206,6 +206,14 @@ export async function sendUsdc(
 ): Promise<{ signature: string }> {
   if (!wallet.publicKey) throw new Error('wallet_disconnected');
 
+  // FIRST, and deliberately not inside the Promise.all below. The Solana
+  // libraries reach for Node's `Buffer`, which no browser has; without this the
+  // whole path dies at `new PublicKey(...)` with "Buffer is not defined" and
+  // nothing is ever signed. Sequential because a module can touch Buffer while
+  // it evaluates, not only when it is called — racing the shim against the
+  // import would make the fix depend on load order.
+  await import('../utils/bufferShim');
+
   const [{ Connection, PublicKey, Transaction, ComputeBudgetProgram }, spl] = await Promise.all([
     import('@solana/web3.js'),
     import('@solana/spl-token'),

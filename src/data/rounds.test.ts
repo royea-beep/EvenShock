@@ -146,6 +146,98 @@ describe('deliberate refusals are distinguishable from transport failures', () =
   });
 });
 
+describe('reporting an observed fairness failure', () => {
+  /**
+   * The "loud in two directions" report is the client half of a fairness
+   * catch. It has no user-visible effect, so a broken wire — the wrong action
+   * name, a dropped field, a caller that forgets to call it — would rot in
+   * silence and cost us the signal exactly when we needed it: the day
+   * something is genuinely wrong.
+   *
+   * The test provokes a real commitment mismatch (the same protocol violation
+   * the server-side attack would produce), mirrors the exact shape
+   * `useRounds` sends from its FairnessError catch, and asserts the invoke
+   * body the play function would see. If any part of that contract drifts —
+   * the action string, the field names, the IntegrityKind union — this test
+   * breaks before the report starts failing quietly in production.
+   */
+  it('sends action=report_integrity with the kind and detail from the catch site', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const committed = await computeCommitment('scissors', 'b'.repeat(64));
+
+    const client = fakeClient((body) => {
+      bodies.push(body);
+      if (body.action === 'submit_move') {
+        // A commitment mismatch on the wire — the same shape a swapped move
+        // produces server-side.
+        return {
+          opponent_choice: 'paper',
+          nonce: 'b'.repeat(64),
+          outcome: 'lose',
+          score: { player: 0, opponent: 1 },
+          match_complete: false,
+        };
+      }
+      return {};
+    });
+    const api = createServerRounds(client);
+
+    let caught: FairnessError | null = null;
+    try {
+      await api.submit(round(committed), 'rock');
+    } catch (err) {
+      if (err instanceof FairnessError) caught = err;
+    }
+    expect(caught).not.toBeNull();
+
+    // Mirrors src/hooks/useRounds.ts — the catch site whose wire this test
+    // exists to protect. Keep in step if that shape changes.
+    await api.reportIntegrity(caught!.kind, {
+      match_id: 'match-under-test',
+      round_id: 1,
+      round_number: 1,
+      commitment: committed,
+      player_choice: 'rock',
+      detail: caught!.detail,
+    });
+
+    const reports = bodies.filter((b) => b.action === 'report_integrity');
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toEqual({
+      action: 'report_integrity',
+      kind: caught!.kind,
+      detail: expect.objectContaining({
+        match_id: 'match-under-test',
+        round_id: 1,
+        round_number: 1,
+        commitment: committed,
+        player_choice: 'rock',
+        detail: caught!.detail,
+      }),
+    });
+    // And the kind is one the server's `integrity_events.kind` CHECK constraint
+    // accepts — a rename on either side would silently drop reports otherwise.
+    expect(['commitment_mismatch', 'outcome_disagreement', 'reveal_before_move']).toContain(
+      reports[0].kind,
+    );
+  });
+
+  it('swallows a transport failure so it cannot mask the fairness error it followed', async () => {
+    // The catch site already has a FairnessError to surface; a second thrown
+    // error from the reporting call would shadow it and confuse both the
+    // player and whoever reads the console. reportIntegrity must not throw.
+    const client = {
+      functions: {
+        invoke: async () => {
+          throw new Error('network down');
+        },
+      },
+    } as unknown as SupabaseClient;
+    const api = createServerRounds(client);
+    await expect(api.reportIntegrity('commitment_mismatch', {})).resolves.toBeUndefined();
+  });
+});
+
 describe('guest rounds', () => {
   it('never claim to be verifiable', () => {
     expect(createLocalRounds().verifiable).toBe(false);

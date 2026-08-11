@@ -20,6 +20,7 @@ export type SoundName =
   | 'matchWin';
 
 import { readThemeAudio } from './themeTokens';
+import { local } from './safeStorage';
 
 const STORAGE_KEY = 'evenshock:muted';
 
@@ -36,11 +37,8 @@ const MIN_REPEAT_MS = 45;
 const lastPlayedAt: Partial<Record<SoundName, number>> = {};
 
 function readStoredMuted(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) === 'true';
-  } catch {
-    return false; // private mode / storage disabled — default to sound ON
-  }
+  // Storage refusing reads as "not muted", which is the right default: sound ON.
+  return local.get(STORAGE_KEY) === 'true';
 }
 
 export function isMuted(): boolean {
@@ -49,11 +47,8 @@ export function isMuted(): boolean {
 
 export function setMuted(next: boolean): void {
   muted = next;
-  try {
-    localStorage.setItem(STORAGE_KEY, String(next));
-  } catch {
-    // Non-fatal: mute still applies for this session.
-  }
+  // Non-fatal if storage refuses: mute still applies for this session.
+  local.set(STORAGE_KEY, String(next));
   if (ctx && master) {
     try {
       master.gain.setTargetAtTime(next ? 0 : 1, ctx.currentTime, 0.01);

@@ -21,26 +21,32 @@ interface Props {
 }
 
 export function RoundTrouble({ trouble, onRetry, onLeave }: Props) {
-  const visible = trouble.kind !== 'none' && trouble.kind !== 'retrying';
+  const waiting = trouble.kind === 'waiting' || trouble.kind === 'retrying';
+  const visible = trouble.kind !== 'none' && !waiting;
   const fairness = trouble.kind === 'fairness';
 
   return (
     <>
-      {/* A quiet line while auto-retry is still working. No buttons: there is
-          nothing useful for the player to do yet, and offering a choice would
-          imply the move might be lost. */}
+      {/* A quiet block while a submit is either stalled on its first attempt
+          ('waiting') or being auto-retried after a drop ('retrying'). No
+          buttons: the move is already committed, and offering a choice would
+          imply it might be lost. The title anchors the block visually so a
+          player on a phone reads a shape, not just a stray line of text. */}
       <AnimatePresence>
-        {trouble.kind === 'retrying' && (
-          <motion.p
-            key="retrying"
+        {waiting && (
+          <motion.div
+            key="waiting"
             role="status"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-x-0 bottom-6 z-40 text-center text-sm text-[var(--text-muted)]"
+            className="fixed inset-x-0 bottom-6 z-40 flex flex-col items-center gap-0.5 px-6 text-center"
           >
-            {copy.trouble.retryingBody}
-          </motion.p>
+            <p className="text-sm font-semibold text-[var(--text-primary)]">
+              {copy.trouble.retryingTitle}
+            </p>
+            <p className="text-sm text-[var(--text-muted)]">{copy.trouble.retryingBody}</p>
+          </motion.div>
         )}
       </AnimatePresence>
 

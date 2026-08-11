@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Choice, MatchFormat } from '../types/game';
 import { getSupabase } from '../data/supabaseClient';
+import { REVEAL_DELAY_MS } from '../constants/gameConfig';
 import {
   createLocalRounds,
   createServerRounds,
@@ -9,6 +10,7 @@ import {
   type OpenRound,
   type RoundsApi,
 } from '../data/rounds';
+import { session } from '../utils/safeStorage';
 
 /**
  * Owns the round lifecycle around `useGame`, which stores nothing and knows
@@ -25,6 +27,8 @@ import {
 
 export type RoundTrouble =
   | { kind: 'none' }
+  /** First submit is still in flight but the reveal has stalled past its floor. */
+  | { kind: 'waiting' }
   /** Auto-retrying a dropped request. The player's move is already committed. */
   | { kind: 'retrying'; attempt: number }
   /** Auto-retry gave up. Manual retry still works — the round is durable. */
@@ -37,6 +41,14 @@ export type RoundTrouble =
 const MAX_AUTO_RETRIES = 3;
 const BACKOFF_MS = [400, 1200, 2500];
 const COMMITTED_KEY = 'evenshock:committed-round';
+/**
+ * How long past the reveal floor a first-attempt submit is allowed to hang
+ * before the "still waiting" indicator surfaces. Chosen so a healthy request
+ * (well under the floor) never shows anything, but a stalled reveal — the
+ * player watching a held coil with no answer — gets a signal that the game
+ * isn't frozen, it's waiting on the network. See {@link RoundTrouble.waiting}.
+ */
+const STALL_INDICATOR_GRACE_MS = 600;
 
 interface Committed {
   matchId: string;
@@ -78,10 +90,19 @@ export function useRounds(authenticated: boolean): RoundsState {
   /** The submit currently waiting on an answer, and how to hand it back. */
   const pending = useRef<{ committed: Committed; resolve: (c: Choice) => void } | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stallTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearStallTimer = useCallback(() => {
+    if (stallTimer.current) {
+      clearTimeout(stallTimer.current);
+      stallTimer.current = null;
+    }
+  }, []);
 
   useEffect(
     () => () => {
       if (retryTimer.current) clearTimeout(retryTimer.current);
+      if (stallTimer.current) clearTimeout(stallTimer.current);
     },
     [],
   );
@@ -124,15 +145,32 @@ export function useRounds(authenticated: boolean): RoundsState {
    */
   const attempt = useCallback(
     async (committed: Committed, attemptNo: number): Promise<void> => {
+      // First attempt has no visible indicator until the reveal has stalled
+      // past its floor. A healthy submit resolves before this fires and the
+      // player sees nothing; a slow one gets a signal that the game is waiting
+      // on the network, not frozen. Retry attempts already carry their own
+      // 'retrying' state from the backoff path below, so this only guards the
+      // first attempt where no other indicator would appear.
+      if (attemptNo === 0) {
+        clearStallTimer();
+        stallTimer.current = setTimeout(() => {
+          stallTimer.current = null;
+          // Only surface if nothing else has claimed the state — an error path
+          // may have already moved us to retrying/offline/refused/fairness.
+          setTrouble((t) => (t.kind === 'none' ? { kind: 'waiting' } : t));
+        }, REVEAL_DELAY_MS + STALL_INDICATOR_GRACE_MS);
+      }
       try {
         const reveal = await api.submit(committed.round, committed.choice);
-        sessionStorage.removeItem(COMMITTED_KEY);
+        clearStallTimer();
+        session.remove(COMMITTED_KEY);
         openRoundRef.current = null;
         setTrouble({ kind: 'none' });
         const p = pending.current;
         pending.current = null;
         p?.resolve(reveal.opponentChoice);
       } catch (err) {
+        clearStallTimer();
         if (err instanceof FairnessError) {
           // Loud in two directions. The console line is for whoever is holding
           // the device; the report is the half that reaches us, because a
@@ -176,7 +214,7 @@ export function useRounds(authenticated: boolean): RoundsState {
         setTrouble({ kind: 'offline' });
       }
     },
-    [api],
+    [api, clearStallTimer],
   );
 
   const resolveOpponentChoice = useCallback(
@@ -192,11 +230,7 @@ export function useRounds(authenticated: boolean): RoundsState {
             };
             // Written BEFORE the request goes out. If the tab reloads between
             // here and the answer, the move is not lost — see the resume effect.
-            try {
-              sessionStorage.setItem(COMMITTED_KEY, JSON.stringify(committed));
-            } catch {
-              /* private mode; the round is still durable server-side */
-            }
+            session.set(COMMITTED_KEY, JSON.stringify(committed));
             pending.current = { committed, resolve };
             await attempt(committed, 0);
           } catch (err) {
@@ -224,16 +258,13 @@ export function useRounds(authenticated: boolean): RoundsState {
 
   const reset = useCallback(() => {
     if (retryTimer.current) clearTimeout(retryTimer.current);
+    clearStallTimer();
     matchIdRef.current = null;
     openRoundRef.current = null;
     pending.current = null;
     setTrouble({ kind: 'none' });
-    try {
-      sessionStorage.removeItem(COMMITTED_KEY);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+    session.remove(COMMITTED_KEY);
+  }, [clearStallTimer]);
 
   const beginMatch = useCallback(
     (format: MatchFormat, theme: string | null, fast: boolean) => {
@@ -267,18 +298,9 @@ export function useRounds(authenticated: boolean): RoundsState {
    * often enough to notice.
    */
   useEffect(() => {
-    let raw: string | null = null;
-    try {
-      raw = sessionStorage.getItem(COMMITTED_KEY);
-    } catch {
-      return;
-    }
+    const raw = session.get(COMMITTED_KEY);
     if (!raw) return;
-    try {
-      sessionStorage.removeItem(COMMITTED_KEY);
-    } catch {
-      /* ignore */
-    }
+    session.remove(COMMITTED_KEY);
     let committed: Committed;
     try {
       committed = JSON.parse(raw) as Committed;

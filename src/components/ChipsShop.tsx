@@ -200,15 +200,22 @@ function CreditedModal({ purchase }: { purchase: Purchase }) {
 function FailedModal({ purchase }: { purchase: Purchase }) {
   const { state } = purchase;
   if (state.kind !== 'failed') return null;
+  // The whole point of `signed`: a failure before the wallet signed cost the
+  // player nothing, and telling them their money is safe would be reassuring
+  // them about something that never happened.
+  const title = state.signed
+    ? copy.chipsPurchase.failedTitle
+    : copy.chipsPurchase.failedTitleUnspent;
+  const body = state.signed
+    ? copy.chipsPurchase.failedBody
+    : copy.chipsPurchase.failedBodyUnspent;
   return (
     <Overlay labelledBy="failed-title">
       <div className="space-y-2">
         <h2 id="failed-title" className="display-type text-xl font-bold">
-          {copy.chipsPurchase.failedTitle}
+          {title}
         </h2>
-        <p className="text-sm leading-relaxed text-muted">
-          {copy.chipsPurchase.failedBody}
-        </p>
+        <p className="text-sm leading-relaxed text-muted">{body}</p>
         <p className="text-xs text-muted">
           <span className="font-mono">{state.code}</span>
           {state.humanCause ? ` — ${state.humanCause}` : ''}
