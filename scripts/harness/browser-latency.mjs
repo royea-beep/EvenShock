@@ -112,6 +112,15 @@ await page.exposeFunction('__evenshockSign', (bytes) => [
 // Instead, the browser stub serializes the UNSIGNED tx (which is valid — the
 // wallet is the only required signer) and Node rebuilds it with a real
 // Keypair, signs it properly, and broadcasts.
+// Mirrors what Phantom's signAndSendTransaction does in production: sign,
+// broadcast, and only return once the network has at least seen the tx.
+// The previous fire-and-forget version returned a signature the moment RPC
+// accepted the base64 blob, even when the tx failed on chain or the blockhash
+// expired before it landed — the app would then call confirm_payment with a
+// signature for a tx that had never landed, and the server would correctly
+// say "Payment could not be verified." Confirming here means a real failure
+// throws in the browser at signAndSendTransaction and the app sees the shape
+// it would see from a real wallet.
 await page.exposeFunction('__evenshockSignAndSendUnsignedTx', async (rawUnsigned) => {
   const tx = Transaction.from(Uint8Array.from(rawUnsigned));
   tx.partialSign(player);
@@ -127,8 +136,41 @@ await page.exposeFunction('__evenshockSignAndSendUnsignedTx', async (rawUnsigned
     }),
   });
   const doc = await res.json();
-  if (doc.error) throw new Error(doc.error.message ?? 'sendTransaction failed');
-  return doc.result;
+  if (doc.error) {
+    console.log(`  [shim] sendTransaction RPC error: ${JSON.stringify(doc.error)}`);
+    throw new Error(doc.error.message ?? 'sendTransaction failed');
+  }
+  const signature = doc.result;
+  console.log(`  [shim] tx submitted: ${signature}`);
+
+  // Now wait for confirmation, the way a real wallet does. Use the same
+  // Connection Node already has for latency-independent polling.
+  const { Connection } = await import('@solana/web3.js');
+  const conn = new Connection(RPC_URL, 'confirmed');
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
+  try {
+    const status = await conn.confirmTransaction(
+      { signature, blockhash, lastValidBlockHeight },
+      'confirmed',
+    );
+    if (status.value.err) {
+      console.log(`  [shim] tx failed on chain: ${JSON.stringify(status.value.err)}`);
+      const detail = await conn.getTransaction(signature, {
+        maxSupportedTransactionVersion: 0,
+        commitment: 'confirmed',
+      });
+      if (detail?.meta?.logMessages) {
+        console.log('  [shim] program logs:');
+        for (const line of detail.meta.logMessages) console.log(`      ${line}`);
+      }
+      throw new Error(`tx failed on chain: ${JSON.stringify(status.value.err)}`);
+    }
+    console.log(`  [shim] tx confirmed: ${signature}`);
+  } catch (err) {
+    console.log(`  [shim] confirmTransaction threw: ${err.message}`);
+    throw err;
+  }
+  return signature;
 });
 
 await page.addInitScript(
