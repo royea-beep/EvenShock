@@ -69,7 +69,41 @@ export interface RoundsState {
   reset: () => void;
 }
 
-export function useRounds(authenticated: boolean): RoundsState {
+/**
+ * What the crash-resume effect should do, as a decision rather than a tangle
+ * of conditions inside an effect — so every case can be asserted.
+ *
+ * THE BUG THIS FIXES. `authenticated` is false during the auth bootstrap and
+ * false for a guest, and the effect could not tell them apart. On every reload
+ * it ran immediately, while `getSession()` was still in flight, took the
+ * committed round out of sessionStorage and handed it to the LOCAL api — which
+ * has no memory of a server round and throws `not_found` into a swallowing
+ * catch. By the time auth resolved and the effect re-ran with the server api,
+ * the key was already gone. So the one case this effect exists for — a
+ * signed-in player who reloaded between committing a move and seeing the
+ * answer — was the one case it never handled, silently, on every reload.
+ *
+ * Waiting is therefore a distinct answer from dropping: consuming the key
+ * before we know who the player is destroys the evidence.
+ */
+export type ResumeAction = 'wait' | 'drop' | 'submit';
+
+export function resumeDecision(input: {
+  /** Has the auth bootstrap settled? Guest and "not yet known" are different. */
+  authResolved: boolean;
+  authenticated: boolean;
+  hasCommitted: boolean;
+}): ResumeAction {
+  if (!input.hasCommitted) return 'wait';
+  if (!input.authResolved) return 'wait';
+  // A guest's rounds live in memory and died with the page. There is nothing
+  // to resume, so clear the key rather than leaving it to confuse a later
+  // sign-in on this browser.
+  if (!input.authenticated) return 'drop';
+  return 'submit';
+}
+
+export function useRounds(authenticated: boolean, authResolved = true): RoundsState {
   const client = getSupabase();
   const api: RoundsApi = useMemo(
     () => (authenticated && client ? createServerRounds(client) : createLocalRounds()),
@@ -299,8 +333,15 @@ export function useRounds(authenticated: boolean): RoundsState {
    */
   useEffect(() => {
     const raw = session.get(COMMITTED_KEY);
-    if (!raw) return;
+    const action = resumeDecision({
+      authResolved,
+      authenticated,
+      hasCommitted: Boolean(raw),
+    });
+    // 'wait' leaves the key untouched: this effect re-runs when auth settles.
+    if (action === 'wait') return;
     session.remove(COMMITTED_KEY);
+    if (action === 'drop' || !raw) return;
     let committed: Committed;
     try {
       committed = JSON.parse(raw) as Committed;

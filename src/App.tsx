@@ -36,7 +36,10 @@ function App() {
   // Rounds are resolved by the server for a signed-in player and by a local
   // draw for a guest — same interface, same async shape, same failure paths.
   // See useRounds: guest mode is not a second, simpler game.
-  const rounds = useRounds(auth.status === 'authenticated');
+  // `auth.resolved` matters here and nowhere else so far: crash-resume must not
+  // treat the bootstrap window as "guest" and throw away a signed-in player's
+  // committed round. See resumeDecision in useRounds.
+  const rounds = useRounds(auth.status === 'authenticated', auth.resolved);
   const game = useGame({ resolveOpponentChoice: rounds.resolveOpponentChoice });
   const screen = getScreen(game);
   const { muted, toggleMuted } = useMuted();
