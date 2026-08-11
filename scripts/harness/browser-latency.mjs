@@ -28,14 +28,50 @@
  * ever receives the finished signature.
  */
 import { chromium } from 'playwright-core';
-import { Keypair } from '@solana/web3.js';
 import nacl from 'tweetnacl';
+import { Transaction } from '@solana/web3.js';
 import { chromiumLaunchOptions } from './chromium.mjs';
+import { BROWSER_WALLET } from './browser-wallet-key.mjs';
 
 const SITE = process.env.EVENSHOCK_SITE ?? 'https://ftable.co.il/evenshock/';
 const MATCHES = Number(process.env.EVENSHOCK_MATCHES ?? 4);
 const RPC_URL = process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 const HEADLESS = process.env.EVENSHOCK_HEADED !== '1';
+const OVERALL_BUDGET_MS = Number(process.env.EVENSHOCK_BUDGET_MS ?? 10 * 60_000);
+
+// A silent hang once burned a whole terminal — no output, no diagnosis. Every
+// await now goes through step(), which names what it was waiting for on
+// timeout, and a top-level watchdog kills the process if the whole run exceeds
+// its budget. Never sit forever again.
+async function step(label, work, ms = 30_000) {
+  const started = Date.now();
+  process.stdout.write(`  · ${label}…`);
+  let handle;
+  try {
+    const timeout = new Promise((_, reject) => {
+      handle = setTimeout(
+        () => reject(new Error(`step "${label}" exceeded ${ms}ms — nothing came back`)),
+        ms,
+      );
+    });
+    const value = await Promise.race([Promise.resolve().then(work), timeout]);
+    process.stdout.write(` ${Date.now() - started}ms\n`);
+    return value;
+  } catch (err) {
+    process.stdout.write(` FAILED after ${Date.now() - started}ms\n`);
+    throw err;
+  } finally {
+    clearTimeout(handle);
+  }
+}
+
+const watchdog = setTimeout(() => {
+  console.error(
+    `\n  WATCHDOG — the whole harness exceeded ${OVERALL_BUDGET_MS}ms. Killing the process so it cannot sit forever.\n`,
+  );
+  process.exit(2);
+}, OVERALL_BUDGET_MS);
+watchdog.unref?.();
 
 // From src/constants/gameConfig.ts. A submit slower than these means the reveal
 // animation waits for the network, which is the thing that must not happen —
@@ -43,10 +79,16 @@ const HEADLESS = process.env.EVENSHOCK_HEADED !== '1';
 const FAST_BUDGET_MS = 501;
 const NORMAL_BUDGET_MS = 870;
 
-const player = Keypair.fromSeed(new Uint8Array(32).fill(9));
+// The seed and derived keypair live in ./browser-wallet-key.mjs so that
+// devnet:setup, fund-browser-wallet, and this file cannot drift.
+const player = BROWSER_WALLET;
 
-const browser = await chromium.launch(chromiumLaunchOptions({ headless: HEADLESS }));
-const page = await (await browser.newContext()).newPage();
+const browser = await step(
+  'launch chromium',
+  () => chromium.launch(chromiumLaunchOptions({ headless: HEADLESS })),
+  60_000,
+);
+const page = await step('open new page', async () => (await browser.newContext()).newPage(), 15_000);
 
 const consoleErrors = [];
 page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
@@ -58,15 +100,22 @@ await page.exposeFunction('__evenshockSign', (bytes) => [
   ...nacl.sign.detached(Uint8Array.from(bytes), player.secretKey),
 ]);
 
-// Transaction signing, for the shop. Same rule as the message signing above:
-// the key stays in Node and the page receives only the signature.
-await page.exposeFunction('__evenshockSignTx', (bytes) => [
-  ...nacl.sign.detached(Uint8Array.from(bytes), player.secretKey),
-]);
-
-// A real wallet broadcasts as well as signs. Doing it from Node keeps the page
-// honest — it exercises purchase.ts's construction, not a shortcut around it.
-await page.exposeFunction('__evenshockSendRaw', async (raw) => {
+// The shop tx signer/sender lives entirely in Node, and the page only ever
+// receives the final signature. Doing tx assembly in the browser stub required
+// `tx.addSignature(publicKey, sig)` where publicKey is our fake `window.solana`
+// object — web3.js does `.equals()` and `.toBuffer()` on it, so the signature
+// lands in the wrong slot, the RPC accepts the malformed bytes and returns a
+// signature-shaped response, and the tx never actually lands on chain. The
+// symptom is a "not yet verified" failure with no USDC missing from the
+// wallet — which is exactly the ghost we chased before this rewrite.
+//
+// Instead, the browser stub serializes the UNSIGNED tx (which is valid — the
+// wallet is the only required signer) and Node rebuilds it with a real
+// Keypair, signs it properly, and broadcasts.
+await page.exposeFunction('__evenshockSignAndSendUnsignedTx', async (rawUnsigned) => {
+  const tx = Transaction.from(Uint8Array.from(rawUnsigned));
+  tx.partialSign(player);
+  const signed = tx.serialize();
   const res = await fetch(RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -74,7 +123,7 @@ await page.exposeFunction('__evenshockSendRaw', async (raw) => {
       jsonrpc: '2.0',
       id: 1,
       method: 'sendTransaction',
-      params: [Buffer.from(Uint8Array.from(raw)).toString('base64'), { encoding: 'base64' }],
+      params: [Buffer.from(signed).toString('base64'), { encoding: 'base64' }],
     }),
   });
   const doc = await res.json();
@@ -87,11 +136,30 @@ await page.addInitScript(
     // The minimal shape auth-js looks for on window.solana. Injected before any
     // page script, so the app finds a wallet on first render exactly as it would
     // with an extension installed.
+    //
+    // signAndSendTransaction lives here rather than being tacked on later,
+    // because purchase.ts's getBrowserSolanaWallet() calls it at ChipsShop's
+    // FIRST render — if it isn't a function then, the shop mounts with the buy
+    // button disabled and `wallet: 'Chip purchases need a Solana wallet in
+    // this release.'` copy showing, and no amount of later assignment recovers
+    // that render. The harness caught this the hard way: shop section present,
+    // Buy button present, but disabled — for a full run.
     window.solana = {
       isPhantom: true,
       publicKey: { toBase58: () => address, toString: () => address },
       connect: async () => ({ publicKey: { toBase58: () => address } }),
       signMessage: async (message) => Uint8Array.from(await window.__evenshockSign([...message])),
+      signAndSendTransaction: async (tx) => {
+        // The unsigned tx round-trips to Node, which owns the Keypair and does
+        // the real signing + broadcast. `serialize` with signature checks off
+        // is valid on an unsigned wallet-signer tx because there are no other
+        // required signers to verify. The page only ever receives the final
+        // signature back — the key never enters the browser.
+        const raw = [
+          ...tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+        ];
+        return { signature: await window.__evenshockSignAndSendUnsignedTx(raw) };
+      },
     };
   },
   { address: player.publicKey.toBase58() },
@@ -119,19 +187,47 @@ async function click(name, { optional = false, timeout = 15_000, role = 'button'
 }
 
 console.log(`\n  loading ${SITE}`);
-const response = await page.goto(SITE, { waitUntil: 'networkidle', timeout: 60_000 });
+const response = await step(
+  'page.goto',
+  () => page.goto(SITE, { waitUntil: 'networkidle', timeout: 60_000 }),
+  75_000,
+);
 console.log(`  HTTP ${response?.status()}`);
 
 // The probe is installed by an effect in App.tsx, so its presence is proof the
 // app mounted rather than the shell merely having loaded.
-await page.waitForFunction(() => typeof window.evenshockLatency === 'function', null, {
-  timeout: 30_000,
-});
+await step(
+  'wait for window.evenshockLatency',
+  () =>
+    page.waitForFunction(() => typeof window.evenshockLatency === 'function', null, {
+      timeout: 30_000,
+    }),
+  35_000,
+);
 console.log('  app mounted');
 
-await click('Connect wallet');
-await click('Connect anyway', { optional: true, timeout: 3_000 }); // guest-progress notice
-await page.waitForTimeout(2_000);
+await step('click Connect wallet', () => click('Connect wallet'), 20_000);
+await step(
+  'dismiss guest-progress notice',
+  () => click('Connect anyway', { optional: true, timeout: 3_000 }),
+  6_000,
+);
+
+// Was: `waitForTimeout(2_000)` and a printed guess. That is not a
+// verification — the harness would happily continue reporting "signed in" while
+// auth was actually stuck. WalletButton renders the shortened address (first
+// four chars + "…" + last four) once auth.status === 'authenticated', so wait
+// for the address to actually appear.
+const shortAddress = `${player.publicKey.toBase58().slice(0, 4)}…${player.publicKey.toBase58().slice(-4)}`;
+await step(
+  `wait for authenticated (button shows ${shortAddress})`,
+  () =>
+    page
+      .getByRole('button', { name: shortAddress, exact: false })
+      .first()
+      .waitFor({ timeout: 20_000 }),
+  22_000,
+);
 console.log(`  signed in as ${player.publicKey.toBase58()}`);
 
 // ------------------------------------------------------------------ play
@@ -142,8 +238,17 @@ console.log(`  signed in as ${player.publicKey.toBase58()}`);
 
 let matchesPlayed = 0;
 for (let m = 0; m < MATCHES; m += 1) {
-  await click('Best of 5', { role: 'radio', optional: true, timeout: 5_000 });
-  if (!(await click('Start game', { optional: m > 0, timeout: 10_000 }))) break;
+  await step(
+    `match ${m + 1}: select Best of 5`,
+    () => click('Best of 5', { role: 'radio', optional: true, timeout: 5_000 }),
+    7_000,
+  );
+  const started = await step(
+    `match ${m + 1}: click Start game`,
+    () => click('Start game', { optional: m > 0, timeout: 10_000 }),
+    12_000,
+  );
+  if (!started) break;
 
   // A bo5 needs three wins by one side and ties replay, so it usually lands in
   // six or seven rounds. Twenty is headroom, not an expectation — stopping
@@ -161,10 +266,23 @@ for (let m = 0; m < MATCHES; m += 1) {
   }
 
   matchesPlayed += 1;
-  await click('Play again', { optional: true, timeout: 10_000 });
+  // "Play again" fires handleStart directly and jumps to RoundScreen — it does
+  // NOT go back to Home. To keep iterating matches (and to leave the app on a
+  // screen where the shop card is mounted), take "Change look" instead, which
+  // is bound to handleLeave and returns to Home. Getting that wrong once cost
+  // three matches and a false "no buy button" report.
+  await step(
+    `match ${m + 1}: return to Home via Change look`,
+    () => click('Change look', { optional: true, timeout: 10_000 }),
+    12_000,
+  );
 }
 
-const summary = await page.evaluate(() => window.evenshockLatency());
+const summary = await step(
+  'collect window.evenshockLatency() summary',
+  () => page.evaluate(() => window.evenshockLatency()),
+  10_000,
+);
 
 // ------------------------------------------------------------ the shop
 //
@@ -183,22 +301,68 @@ const shop = { attempted: false, reached: null, credited: null, error: null };
 if (process.env.EVENSHOCK_SKIP_SHOP !== '1') {
   shop.attempted = true;
   try {
-    // signAndSendTransaction is what purchase.ts asks for — distinct from the
-    // signMessage the sign-in path uses.
-    await page.evaluate(() => {
-      const w = window;
-      w.solana.signAndSendTransaction = async (tx) => {
-        const bytes = [...tx.serializeMessage()];
-        const sig = await w.__evenshockSignTx(bytes);
-        tx.addSignature(w.solana.publicKey, Uint8Array.from(sig));
-        const raw = [...tx.serialize()];
-        return { signature: await w.__evenshockSendRaw(raw) };
-      };
-    });
+    // ChipsShop is only mounted on HomeScreen (App.tsx line 262 — the shop is
+    // gated on both `auth.status === 'authenticated'` AND `screen === 'home'`).
+    // If a prior step left us on RoundScreen or MatchEndScreen, the buy button
+    // is genuinely not in the DOM. Require Home before we call the shop
+    // "unreachable" — otherwise we're diagnosing a harness bug, not the app.
+    const onHome = await step(
+      'confirm HomeScreen (Start game button visible)',
+      () =>
+        page
+          .getByRole('button', { name: 'Start game', exact: false })
+          .first()
+          .waitFor({ timeout: 5_000 })
+          .then(() => true)
+          .catch(() => false),
+      7_000,
+    );
+    if (!onHome) {
+      shop.reached =
+        'harness did not return to HomeScreen — buy button is only mounted there';
+      throw new Error(shop.reached);
+    }
 
-    const opened = await click('Buy 100 chips', { optional: true, timeout: 10_000 });
+    // signAndSendTransaction is now installed in addInitScript above, before
+    // any page script runs — see the comment there for why it must be present
+    // at ChipsShop's first render rather than assigned later.
+
+    const opened = await step(
+      'click Buy 100 chips',
+      () => click('Buy 100 chips', { optional: true, timeout: 10_000 }),
+      12_000,
+    );
     if (!opened) {
-      shop.reached = 'no buy button — is the shop visible for this account?';
+      // Dump what the DOM actually says so "no buy button" stops being a
+      // black box. If Buy 100 chips is present-but-not-clickable we want to
+      // know; if the shop section is missing entirely we want to know that too.
+      const diag = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button')).map((b) => ({
+          text: (b.textContent || '').trim().slice(0, 60),
+          disabled: b.disabled,
+        }));
+        const shopSection = document.querySelector('section[aria-label="Buy chips"]');
+        return {
+          hasShopSection: !!shopSection,
+          shopSectionText: shopSection?.textContent?.trim().slice(0, 200) ?? null,
+          bodyMentionsBuy: /Buy 100 chips|Get 100 chips/i.test(document.body.textContent || ''),
+          buttonCount: buttons.length,
+          buttons: buttons.slice(0, 20),
+        };
+      });
+      console.log('  buy-button DIAGNOSTICS:');
+      console.log(`    aria section "Buy chips" present: ${diag.hasShopSection}`);
+      console.log(`    "Buy 100 chips" or "Get 100 chips" text anywhere: ${diag.bodyMentionsBuy}`);
+      if (diag.shopSectionText) console.log(`    section text: ${diag.shopSectionText}`);
+      console.log(`    button count: ${diag.buttonCount}`);
+      for (const b of diag.buttons) {
+        console.log(`      [${b.disabled ? 'disabled' : 'enabled '}] "${b.text}"`);
+      }
+      shop.reached = diag.hasShopSection
+        ? 'shop section rendered but Buy 100 chips button not clickable'
+        : diag.bodyMentionsBuy
+          ? 'buy text present but no matching button — check selector'
+          : 'shop section not mounted — ChipsShop did not render on HomeScreen';
     } else {
       // Order matters and mirrors usePurchase.buy(): an open intent is checked
       // BEFORE the ToS state, so the resume prompt can appear first.
@@ -209,18 +373,27 @@ if (process.env.EVENSHOCK_SKIP_SHOP !== '1') {
       // for "continue" hangs on a disabled control — which is the gate working.
       const gate = page.getByRole('checkbox').first();
       if (await gate.isVisible({ timeout: 5_000 }).catch(() => false)) {
-        await gate.check();
-        await click('I understand — continue', { optional: true, timeout: 5_000 });
+        await step('tick ToS checkbox', () => gate.check({ timeout: 10_000 }), 12_000);
+        await step(
+          'click ToS continue',
+          () => click('I understand — continue', { optional: true, timeout: 5_000 }),
+          8_000,
+        );
       }
 
       // Credited, or still pending after the network takes its time — both are
       // successful outcomes of the browser half. Only an error modal is a fail.
-      const credited = await page
-        .getByText(/Credited: \+\d+ chips/i)
-        .first()
-        .waitFor({ timeout: 120_000 })
-        .then(() => true)
-        .catch(() => false);
+      const credited = await step(
+        'wait for "Credited: +N chips"',
+        () =>
+          page
+            .getByText(/Credited: \+\d+ chips/i)
+            .first()
+            .waitFor({ timeout: 120_000 })
+            .then(() => true)
+            .catch(() => false),
+        130_000,
+      );
       shop.credited = credited;
       shop.reached = credited ? 'credited' : await currentPurchaseState();
     }
@@ -236,7 +409,10 @@ async function currentPurchaseState() {
     .catch(() => null);
 }
 
-await browser.close();
+await step('browser.close', () => browser.close(), 15_000).catch((err) => {
+  console.error(`  browser.close warning — ${err.message}`);
+});
+clearTimeout(watchdog);
 
 // --------------------------------------------------------------- report
 

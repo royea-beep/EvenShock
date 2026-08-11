@@ -26,6 +26,7 @@ import {
 } from '@solana/spl-token';
 import { assertDevnet, loadKeypair, readState, writeState, formatUnits, sleep } from './chain.mjs';
 import { signInWithKeypair } from '../harness/auth.mjs';
+import { ensureBrowserWalletFunded } from '../harness/fund-browser-wallet.mjs';
 import { SUPABASE_URL, ANON_KEY, SERVICE_ROLE_KEY, RPC_URL, requireServiceRole } from '../harness/env.mjs';
 
 const DECIMALS = 6;
@@ -180,4 +181,16 @@ writeState({
 });
 
 await sleep(200);
-console.log('\n  setup complete — run: npm run devnet:e2e\n');
+
+// ---------------------------------------------------------- browser wallet
+//
+// Fund the deterministic wallet the browser harness signs with, on THIS run's
+// mint, using THIS run's payer. Folded in here — not left as a separate step —
+// because "did we remember to fund the browser wallet?" is exactly the drift
+// that made a passing setup coexist with a failing e2e:browser: the harness
+// held tokens from a previous mint while payment_config pointed at a new one,
+// and confirm_payment correctly found nothing.
+console.log('\n  funding browser harness wallet');
+await ensureBrowserWalletFunded({ connection, payer, mint, decimals: DECIMALS });
+
+console.log('\n  setup complete — run: npm run devnet:e2e (or npm run e2e:browser)\n');
