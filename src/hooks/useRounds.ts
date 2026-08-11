@@ -9,6 +9,7 @@ import {
   type OpenRound,
   type RoundsApi,
 } from '../data/rounds';
+import { session } from '../utils/safeStorage';
 
 /**
  * Owns the round lifecycle around `useGame`, which stores nothing and knows
@@ -37,51 +38,6 @@ export type RoundTrouble =
 const MAX_AUTO_RETRIES = 3;
 const BACKOFF_MS = [400, 1200, 2500];
 const COMMITTED_KEY = 'evenshock:committed-round';
-
-/**
- * `sessionStorage`, which is allowed to throw.
- *
- * Access to it raises in private-browsing modes and wherever site storage is
- * disabled — which is why three of the four call sites below were already
- * wrapped. The fourth was not, and it sat on the SUCCESS path: a throw there
- * landed in the catch that handles submit failures, where a storage error is
- * indistinguishable from a dropped request. The result was that a round which
- * had genuinely resolved got retried, retried again, and finished in the
- * failure state — the game visibly breaking after every round for exactly the
- * users whose browser refuses storage, while the server had done everything
- * right.
- *
- * Node has no `sessionStorage` at all, so no test could have caught it: this
- * hook only ever runs in a browser, and the browser it breaks in is one nobody
- * had opened. Centralised here so the next call site cannot get it wrong.
- *
- * Resume is a convenience, never a correctness requirement — the round is
- * durable server-side and `submit` is idempotent — so failing silently is the
- * right behaviour rather than a compromise.
- */
-const session = {
-  get(key: string): string | null {
-    try {
-      return sessionStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  set(key: string, value: string): void {
-    try {
-      sessionStorage.setItem(key, value);
-    } catch {
-      /* storage unavailable; the round is still durable server-side */
-    }
-  },
-  remove(key: string): void {
-    try {
-      sessionStorage.removeItem(key);
-    } catch {
-      /* storage unavailable; nothing was stored to begin with */
-    }
-  },
-};
 
 interface Committed {
   matchId: string;

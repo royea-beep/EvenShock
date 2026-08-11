@@ -30,10 +30,10 @@
  */
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
+import { chromiumLaunchOptions } from './chromium.mjs';
 
 const PORT = Number(process.env.EVENSHOCK_DEV_PORT ?? 5174);
 const BASE = `http://localhost:${PORT}/evenshock/`;
-const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 
 // Values with no secrets in them; the point is the shape, not the accounts.
 const INTENT = {
@@ -88,7 +88,7 @@ await waitForServer();
 
 // ------------------------------------------------------------------ page
 
-const browser = await chromium.launch({ executablePath: CHROMIUM });
+const browser = await chromium.launch(chromiumLaunchOptions());
 const page = await (await browser.newContext()).newPage();
 
 // The single RPC call, answered locally. A real blockhash is 32 base58 bytes

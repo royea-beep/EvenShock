@@ -16,7 +16,8 @@
     "devnet:e2e": "node scripts/devnet/e2e.mjs",
     "e2e:rounds": "EVENSHOCK_LIVE=1 vitest run --config vitest.live.config.ts",
     "e2e:browser": "node scripts/harness/browser-latency.mjs",
-    "e2e:preflight": "node scripts/harness/browser-preflight.mjs"
+    "e2e:preflight": "node scripts/harness/browser-preflight.mjs",
+    "test:browser": "vitest run --config vitest.browser.config.ts"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.15",
@@ -33,7 +34,10 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "@vitest/browser": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.10",
     "oxlint": "^1.75.0",
+    "playwright": "^1.62.1",
     "playwright-core": "^1.62.1",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.3.3",

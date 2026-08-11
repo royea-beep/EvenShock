@@ -30,10 +30,11 @@
 import { chromium } from 'playwright-core';
 import { Keypair } from '@solana/web3.js';
 import nacl from 'tweetnacl';
+import { chromiumLaunchOptions } from './chromium.mjs';
 
 const SITE = process.env.EVENSHOCK_SITE ?? 'https://ftable.co.il/evenshock/';
-const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 const MATCHES = Number(process.env.EVENSHOCK_MATCHES ?? 4);
+const RPC_URL = process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 const HEADLESS = process.env.EVENSHOCK_HEADED !== '1';
 
 // From src/constants/gameConfig.ts. A submit slower than these means the reveal
@@ -44,7 +45,7 @@ const NORMAL_BUDGET_MS = 870;
 
 const player = Keypair.fromSeed(new Uint8Array(32).fill(9));
 
-const browser = await chromium.launch({ executablePath: CHROMIUM, headless: HEADLESS });
+const browser = await chromium.launch(chromiumLaunchOptions({ headless: HEADLESS }));
 const page = await (await browser.newContext()).newPage();
 
 const consoleErrors = [];
@@ -56,6 +57,30 @@ page.on('pageerror', (e) => consoleErrors.push(String(e)));
 await page.exposeFunction('__evenshockSign', (bytes) => [
   ...nacl.sign.detached(Uint8Array.from(bytes), player.secretKey),
 ]);
+
+// Transaction signing, for the shop. Same rule as the message signing above:
+// the key stays in Node and the page receives only the signature.
+await page.exposeFunction('__evenshockSignTx', (bytes) => [
+  ...nacl.sign.detached(Uint8Array.from(bytes), player.secretKey),
+]);
+
+// A real wallet broadcasts as well as signs. Doing it from Node keeps the page
+// honest — it exercises purchase.ts's construction, not a shortcut around it.
+await page.exposeFunction('__evenshockSendRaw', async (raw) => {
+  const res = await fetch(RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sendTransaction',
+      params: [Buffer.from(Uint8Array.from(raw)).toString('base64'), { encoding: 'base64' }],
+    }),
+  });
+  const doc = await res.json();
+  if (doc.error) throw new Error(doc.error.message ?? 'sendTransaction failed');
+  return doc.result;
+});
 
 await page.addInitScript(
   ({ address }) => {
@@ -140,6 +165,77 @@ for (let m = 0; m < MATCHES; m += 1) {
 }
 
 const summary = await page.evaluate(() => window.evenshockLatency());
+
+// ------------------------------------------------------------ the shop
+//
+// The purchase flow, driven through its own UI against the live server. This
+// is the half `browser-preflight.mjs` cannot reach: the preflight stubs the RPC
+// and the wallet, so it proves the transfer is BUILT correctly and stops there.
+// Everything after the signature — the wallet signing, the chain accepting it,
+// confirm_payment verifying it, chips landing — has still never run in a
+// browser, and that is where "Buffer is not defined" was hiding.
+//
+// The stub wallet signs for real with the harness keypair, so this needs that
+// account funded with devnet USDC (npm run devnet:setup handles the payer; this
+// is a different key). Skipped rather than failed when it is not.
+
+const shop = { attempted: false, reached: null, credited: null, error: null };
+if (process.env.EVENSHOCK_SKIP_SHOP !== '1') {
+  shop.attempted = true;
+  try {
+    // signAndSendTransaction is what purchase.ts asks for — distinct from the
+    // signMessage the sign-in path uses.
+    await page.evaluate(() => {
+      const w = window;
+      w.solana.signAndSendTransaction = async (tx) => {
+        const bytes = [...tx.serializeMessage()];
+        const sig = await w.__evenshockSignTx(bytes);
+        tx.addSignature(w.solana.publicKey, Uint8Array.from(sig));
+        const raw = [...tx.serialize()];
+        return { signature: await w.__evenshockSendRaw(raw) };
+      };
+    });
+
+    const opened = await click('Buy 100 chips', { optional: true, timeout: 10_000 });
+    if (!opened) {
+      shop.reached = 'no buy button — is the shop visible for this account?';
+    } else {
+      // Order matters and mirrors usePurchase.buy(): an open intent is checked
+      // BEFORE the ToS state, so the resume prompt can appear first.
+      await click('Cancel that and start a new purchase', { optional: true, timeout: 5_000 });
+
+      // The ToS gate is deliberately blocking, and its continue button stays
+      // disabled until the checkbox is ticked BY the player. Clicking straight
+      // for "continue" hangs on a disabled control — which is the gate working.
+      const gate = page.getByRole('checkbox').first();
+      if (await gate.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        await gate.check();
+        await click('I understand — continue', { optional: true, timeout: 5_000 });
+      }
+
+      // Credited, or still pending after the network takes its time — both are
+      // successful outcomes of the browser half. Only an error modal is a fail.
+      const credited = await page
+        .getByText(/Credited: \+\d+ chips/i)
+        .first()
+        .waitFor({ timeout: 120_000 })
+        .then(() => true)
+        .catch(() => false);
+      shop.credited = credited;
+      shop.reached = credited ? 'credited' : await currentPurchaseState();
+    }
+  } catch (err) {
+    shop.error = String(err?.message ?? err);
+  }
+}
+
+/** Whatever the purchase modal is currently saying, for the report. */
+async function currentPurchaseState() {
+  return await page
+    .evaluate(() => document.querySelector('[role="dialog"]')?.textContent?.slice(0, 200) ?? null)
+    .catch(() => null);
+}
+
 await browser.close();
 
 // --------------------------------------------------------------- report
@@ -170,7 +266,15 @@ for (const [label, budget] of [
 console.log(`\n  console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 5)) console.log(`    ${e}`);
 
+console.log(`\n  purchase flow:`);
+if (!shop.attempted) console.log('    skipped (EVENSHOCK_SKIP_SHOP=1)');
+else if (shop.error) console.log(`    ERROR — ${shop.error}`);
+else if (shop.credited) console.log('    credited — the browser purchase path works end to end');
+else console.log(`    not credited — ${shop.reached}`);
+
 console.log(
   `\n  This is a desktop floor, not the phone number src/utils/latency.ts asks for.\n` +
     `  A real player is somewhere worse than this.\n`,
 );
+
+process.exit(shop.error ? 1 : 0);

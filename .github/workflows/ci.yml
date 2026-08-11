@@ -20,8 +20,36 @@ jobs:
       - run: npm ci
       - run: npm run lint
       # Theme token parity — a theme missing a token breaks silently at runtime.
+      # Also runtimeAssumptions.test.ts, which fails on a raw Buffer or raw
+      # storage access anywhere in src/ — the source-level invariant behind the
+      # two browser bugs below.
       - run: npm test
       - run: npm run build
+
+      # ---------------------------------------------------------------------
+      # Everything past here runs in a REAL browser, because Node cannot see
+      # these failures and jsdom cannot either — measured: jsdom has `Buffer`
+      # and its storage never refuses, so it would have caught neither of the
+      # two bugs that put these steps here.
+      #
+      #   Buffer is not defined      every chip purchase failed, while the
+      #                              devnet suite was 18/18 green in Node
+      #   sessionStorage throws      a resolved round shown as failed, after
+      #                              every round, in private browsing
+      #
+      # Chromium only: this is checking runtime assumptions, not cross-browser
+      # rendering, and one real browser answers the question.
+      - name: Install Chromium for browser tests
+        run: npx playwright install --with-deps chromium
+
+      # Unit-level: the shim installs a Buffer the Solana libraries can use.
+      - run: npm run test:browser
+
+      # Flow-level, offline: builds a real USDC transfer in Chromium through the
+      # app's own module graph, and plays a round in a browser that throws on
+      # every storage access. No network, no wallet, no secrets — which is why
+      # it can gate every pull request.
+      - run: npm run e2e:preflight
 
       # Deploys dist/ to a cPanel host over plain FTP (port 21), matching the
       # account's actual working setup (secure=false). Only runs on pushes to

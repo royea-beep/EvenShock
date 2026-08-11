@@ -5,15 +5,11 @@ import {
   isThemeId,
   type ThemeId,
 } from '../constants/themes';
+import { local } from '../utils/safeStorage';
 
 function readStoredTheme(): ThemeId {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (isThemeId(stored)) return stored;
-  } catch {
-    // Storage unavailable — fall through to the default.
-  }
-  return DEFAULT_THEME;
+  const stored = local.get(THEME_STORAGE_KEY);
+  return isThemeId(stored) ? stored : DEFAULT_THEME;
 }
 
 /**
@@ -30,11 +26,8 @@ export function useTheme() {
 
   const setTheme = useCallback((next: ThemeId) => {
     setThemeState(next);
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, next);
-    } catch {
-      // Non-fatal: the theme still applies for this session.
-    }
+    // Non-fatal if storage refuses: the theme still applies for this session.
+    local.set(THEME_STORAGE_KEY, next);
   }, []);
 
   return { theme, setTheme };

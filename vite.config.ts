@@ -22,6 +22,10 @@ export default defineConfig({
     // `npm test` or by CI. The suite also refuses to start without
     // EVENSHOCK_LIVE=1 — two fences, because one glob is a thin thing to have
     // between a pull request and production data.
-    exclude: [...configDefaults.exclude, '**/*.live.test.ts'],
+    // `*.browser.test.ts` belongs to vitest.browser.config.ts and asserts things
+    // that are true ONLY in a browser — bufferShim's first assertion is that
+    // `Buffer` is absent, which is false here. Running them in Node does not
+    // just fail, it fails misleadingly.
+    exclude: [...configDefaults.exclude, '**/*.live.test.ts', '**/*.browser.test.{ts,tsx}'],
   },
 })

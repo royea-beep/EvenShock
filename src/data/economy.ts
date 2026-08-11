@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { PRICED_THEMES, matchAward, themePrice } from '../utils/economy';
+import { local } from '../utils/safeStorage';
 
 /**
  * XP and chips, client side. Virtual only — nothing here converts to money.
@@ -124,7 +125,7 @@ const GUEST_KEY = 'evenshock:guest-economy';
 
 function readGuest(): EconomyState {
   try {
-    const raw = localStorage.getItem(GUEST_KEY);
+    const raw = local.get(GUEST_KEY);
     if (!raw) return { ...EMPTY_ECONOMY };
     const parsed = JSON.parse(raw) as Partial<EconomyState>;
     return {
@@ -138,11 +139,8 @@ function readGuest(): EconomyState {
 }
 
 function writeGuest(state: EconomyState): EconomyState {
-  try {
-    localStorage.setItem(GUEST_KEY, JSON.stringify(state));
-  } catch {
-    /* private mode — the balance still works for this session */
-  }
+  // If storage refuses, the balance still works for this session.
+  local.set(GUEST_KEY, JSON.stringify(state));
   return state;
 }
 
