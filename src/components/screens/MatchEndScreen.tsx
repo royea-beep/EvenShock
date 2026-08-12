@@ -7,6 +7,7 @@ import { Confetti } from '../Confetti';
 import { HistoryTrail, OUTCOME_MARK } from '../MatchStatusBar';
 import { play } from '../../utils/sound';
 import { getMatchStats, type RoundEntry } from '../../utils/roundHistory';
+import { buildShareLine } from '../../utils/share';
 
 interface MatchEndScreenProps {
   /** What this match paid. Same curve on both paths — see utils/economy.ts. */
@@ -196,7 +197,8 @@ function ExitButton({
   );
 }
 
-/** Builds the plain-text result line. Exported for testing. */
+/** Builds the plain-text result line, ending in the share URL so a recipient
+ *  who taps it lands on the game. Exported for testing. */
 export function buildShareText(
   score: Score,
   format: MatchFormat,
@@ -205,13 +207,12 @@ export function buildShareText(
 ): string {
   const trail = history.map((e) => OUTCOME_MARK[e.outcome]).join('');
   const headline = winner === 'player' ? 'I won' : winner === 'opponent' ? 'I lost' : 'We drew';
-  return [
-    `EvenShock — ${copy.formats[format]}`,
-    `${headline} ${score.player}–${score.opponent}`,
-    trail,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  return buildShareLine({
+    formatLabel: copy.formats[format],
+    headline,
+    scoreLine: `${score.player}–${score.opponent}`,
+    trail: trail || undefined,
+  });
 }
 
 function ShareResult({
