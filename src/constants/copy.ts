@@ -16,6 +16,26 @@ export const copy = {
    * fairly.
    */
   entry: {
+    /** Shown ONLY on the very first visit, above the two path cards.
+     *
+     * Three lines, in order of what a first-timer needs to know before they
+     * can pick a path: what the game is, why an account (wallet) matters,
+     * what chips are (and are not — this is the honest framing that also
+     * does the compliance work of naming "no cash value" before the shop).
+     *
+     * Suppressed after the first visit via the entryIntroSeen storage flag —
+     * a returning player who reopens the door via "Guest or wallet?" has
+     * already answered "what is this", so we don't ask again.
+     */
+    intro: {
+      headline: 'New here?',
+      gameLine:
+        'EvenShock is rock-paper-scissors against a bot. Quick matches, XP for playing, chips for winning.',
+      walletLine:
+        'A wallet is optional. It gives you an account that follows you across browsers, and unlocks buying chips and playing a friend.',
+      chipsLine:
+        'Chips have no cash value. They unlock cosmetic looks and, soon, matches against friends — nothing you can cash out.',
+    },
     title: 'How do you want to play?',
     subtitle: 'Pick once. You can switch whenever you like.',
 

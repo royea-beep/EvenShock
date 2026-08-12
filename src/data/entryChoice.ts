@@ -33,6 +33,21 @@ export function writeEntryChoice(choice: EntryChoice): void {
   local.set(KEY, choice);
 }
 
+// Same shape as the choice flag, and for the same reason: the intro is a
+// once-per-browser piece of chrome, and forgetting is cheap (a returning
+// visitor sees three sentences again, not a broken app). Kept next to the
+// entry choice because it lives on the same screen and shares its failure
+// mode.
+const INTRO_KEY = 'evenshock.entryIntro.v1';
+
+export function readIntroSeen(): boolean {
+  return local.get(INTRO_KEY) === 'seen';
+}
+
+export function markIntroSeen(): void {
+  local.set(INTRO_KEY, 'seen');
+}
+
 /**
  * Whether the door is on screen. A pure function, extracted from the hook so
  * every case can be asserted without a renderer — the rules are the feature,

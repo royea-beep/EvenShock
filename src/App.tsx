@@ -224,6 +224,7 @@ function App() {
           // A first visit has no dismiss: the choice is the point. A reopened
           // comparison does — looking is not un-choosing.
           onDismiss={entry.choice !== null ? entry.dismiss : undefined}
+          showIntro={entry.showIntro}
         />
       )}
 
