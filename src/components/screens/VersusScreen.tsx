@@ -7,6 +7,7 @@ import type { ImageSet } from '../../assets/themes';
 import type { MatchFormat } from '../../types/game';
 import type { MultiplayerState } from '../../hooks/useMultiplayer';
 import type { RoundResult, Seat } from '../../data/multiplayer';
+import { STAKE_TABLES_ENABLED } from '../../constants/features';
 
 /**
  * The friend match, on screen.
@@ -96,38 +97,46 @@ export function VersusScreen({
               ))}
             </div>
 
-            <p className="text-xs font-semibold text-muted">{copy.versus.stakeLabel}</p>
-            <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label={copy.versus.stakeLabel}>
-              {mp.stakes.map((s) => {
-                const affordable = s.stake <= chips;
-                return (
-                  <button
-                    key={s.stake}
-                    type="button"
-                    role="radio"
-                    aria-checked={stake === s.stake}
-                    disabled={!affordable}
-                    onClick={() => setStake(s.stake)}
-                    style={pill}
-                    className={`display-type min-h-9 cursor-pointer px-1 text-[0.7rem] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
-                      stake === s.stake
-                        ? 'bg-scissors text-scissors-ink'
-                        : 'bg-[var(--surface-base)] text-ink'
-                    }`}
-                  >
-                    {s.stake === 0 ? copy.versus.freeStake : s.stake}
-                  </button>
-                );
-              })}
-            </div>
+            {/* The stake picker exists only when wagering is cleared. With
+                STAKE_TABLES_ENABLED false this whole block is dead code Vite
+                removes, so there is no control to find with dev tools — and
+                loadStakeOptions returns the free table only regardless. */}
+            {STAKE_TABLES_ENABLED && (
+              <>
+                <p className="text-xs font-semibold text-muted">{copy.versus.stakeLabel}</p>
+                <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label={copy.versus.stakeLabel}>
+                  {mp.stakes.map((s) => {
+                    const affordable = s.stake <= chips;
+                    return (
+                      <button
+                        key={s.stake}
+                        type="button"
+                        role="radio"
+                        aria-checked={stake === s.stake}
+                        disabled={!affordable}
+                        onClick={() => setStake(s.stake)}
+                        style={pill}
+                        className={`display-type min-h-9 cursor-pointer px-1 text-[0.7rem] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                          stake === s.stake
+                            ? 'bg-scissors text-scissors-ink'
+                            : 'bg-[var(--surface-base)] text-ink'
+                        }`}
+                      >
+                        {s.stake === 0 ? copy.versus.freeStake : s.stake}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
             {/* The rake as a line item, before anyone sits down. A visible cut
                 is respected; a discovered one is not. */}
-            <StakeNotice stake={stake} stakes={mp.stakes} kind="create" />
+            {STAKE_TABLES_ENABLED && <StakeNotice stake={stake} stakes={mp.stakes} kind="create" />}
 
             <button
               type="button"
-              onClick={() => mp.create(format, stake)}
+              onClick={() => mp.create(format, STAKE_TABLES_ENABLED ? stake : 0)}
               disabled={phase.kind === 'creating' || !mp.stakesLoaded}
               style={pill}
               className="display-type min-h-11 w-full cursor-pointer bg-scissors px-4 text-sm font-bold text-scissors-ink disabled:cursor-wait"

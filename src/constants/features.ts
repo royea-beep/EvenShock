@@ -45,3 +45,32 @@ export const FAST_MODE_ENABLED = import.meta.env.VITE_ENABLE_FAST_MODE === 'true
  * the multiplayer UI, never before.
  */
 export const MULTIPLAYER_UI_ENABLED = import.meta.env.VITE_ENABLE_MULTIPLAYER === 'true';
+
+/**
+ * STAKE TABLES ARE OFF, AND THE REASON IS NOT TECHNICAL.
+ *
+ * Spending chips on a cosmetic is a purchase. Staking chips against another
+ * player on a chance outcome is a wager. The first is unambiguous and ships;
+ * the second is the thing a lawyer has to clear, and it waits — with or
+ * without a rake, because the stake is the risk, not the house's cut.
+ *
+ * OFF MEANS ABSENT, not hidden. With this false, `loadStakeOptions` returns
+ * the free table only, no stake picker renders, and `createTable` cannot send
+ * a nonzero stake — the value is dropped at the boundary rather than trusted
+ * from a caller. Vite inlines the constant, so the picker is not in the bundle
+ * to find with dev tools.
+ *
+ * IT IS NOT THE ONLY GATE, and deliberately not the important one. The server
+ * refuses independently: `feature_flags.stake_tables` is false, every priced
+ * option in `mp_stake_options` is deactivated, and a trigger on `mp_tables`
+ * rejects a staked insert outright. All three hold against the service role,
+ * which is stronger than anything a browser can reach. This flag exists so the
+ * UI does not offer something the server would refuse.
+ *
+ * Nothing is deleted. Escrow, rake, settlement and the conservation proofs all
+ * stay exactly as built. To turn it on: VITE_ENABLE_STAKE_TABLES=true, rebuild,
+ * and `update feature_flags set enabled = true where key = 'stake_tables'`
+ * plus reactivating the priced rows in mp_stake_options. See
+ * docs/stake-tables-flag.md.
+ */
+export const STAKE_TABLES_ENABLED = import.meta.env.VITE_ENABLE_STAKE_TABLES === 'true';

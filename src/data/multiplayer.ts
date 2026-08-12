@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Choice, MatchFormat } from '../utils/rules';
+import { STAKE_TABLES_ENABLED } from '../constants/features';
 
 /**
  * Playing a friend, client side.
@@ -199,7 +200,12 @@ export interface MultiplayerApi {
 export function createMultiplayer(client: SupabaseClient): MultiplayerApi {
   return {
     async createTable(format, stake) {
-      const d = await callMp(client, { action: 'mp_create', format, stake });
+      // The stake is dropped at the boundary rather than trusted from the
+      // caller: with stake tables off there is no value a screen, a console or
+      // a future refactor could pass that reaches the server as a wager. The
+      // server refuses independently — this is about not asking.
+      const requested = STAKE_TABLES_ENABLED ? stake : 0;
+      const d = await callMp(client, { action: 'mp_create', format, stake: requested });
       return {
         tableId: String(d.table_id),
         inviteCode: typeof d.invite_code === 'string' ? d.invite_code : null,
@@ -329,6 +335,10 @@ export function createMultiplayer(client: SupabaseClient): MultiplayerApi {
  *  exposes only active rows, and the arithmetic is recomputed here from
  *  `rake_bps` rather than trusted from anywhere else. */
 export async function loadStakeOptions(client: SupabaseClient): Promise<StakeOption[]> {
+  // Free tables are the whole menu while stakes are off. Returning early also
+  // means the picker has nothing to render even if a screen forgot to check
+  // the flag itself.
+  if (!STAKE_TABLES_ENABLED) return [{ stake: 0, pot: 0, rake: 0, payout: 0 }];
   const { data, error } = await client
     .from('mp_stake_options')
     .select('stake_chips, rake_bps')
