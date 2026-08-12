@@ -188,3 +188,12 @@ The returned promise **may stay pending**. The round screen derives its phase fr
 ### Guests
 
 Guest play uses a local draw behind the identical interface, including a locally generated commitment. That commitment **verifies nothing** — the same process makes both halves — and `verifiable` is `false` so nothing user-facing can ever claim provable fairness for a guest. It exists so guest play exercises the same async, verification and failure paths rather than being a second, simpler game that rots unnoticed.
+
+### Leaderboard
+
+Signed-in players who have completed at least 5 matches appear on the leaderboard. Two properties, both enforced in the DB rather than the UI:
+
+* **Guests never appear** — the `public.leaderboard(int, int)` RPC is granted only to `authenticated`, so a caller with no session cannot invoke it. The button is hidden for guests as well, but the enforcement is the grant list, not the button.
+* **Only finalized matches count** — the RPC joins `matches` on `status = 'complete'`, so walking out of a losing match does not rescue a rank. Ties go to fewer matches (higher win rate at the same wins), then to profile age (earlier accounts break ties).
+
+**Standing caveat: competition-grade only for the bot path.** The bot game is server-authoritative end to end (commit-reveal, server-drawn move, server-decided outcome, client cannot INSERT into `matches` or `rounds`). Multiplayer against a friend uses a separate `mp` Edge Function with its own commit-reveal and rake settlement, and stake tables are behind `feature_flags.stake_tables` (currently off). Until independent audit of the multiplayer settlement path, the leaderboard is honest but not tournament-graded.

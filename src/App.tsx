@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 import { useGame } from './hooks/useGame';
 import { useTheme } from './hooks/useTheme';
@@ -30,6 +30,8 @@ import { VersusScreen } from './components/screens/VersusScreen';
 import { useMultiplayer } from './hooks/useMultiplayer';
 import { MULTIPLAYER_UI_ENABLED } from './constants/features';
 import { RoundTrouble } from './components/RoundTrouble';
+import { LeaderboardPanel } from './components/LeaderboardPanel';
+import { usePersistence } from './hooks/usePersistence';
 // TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
 import { ImpactVariantBadge } from './components/ImpactVariantBadge';
 import { IMPACT_VARIANT } from './utils/impactVariant';
@@ -63,6 +65,12 @@ function App() {
   // sides, and this is the first feature that is meaningless without one, so
   // guest mode is not bent to allow it.
   const mp = useMultiplayer(auth.status === 'authenticated');
+  const persistence = usePersistence(auth.status === 'authenticated');
+  // Leaderboard open/closed. State lives here (not in HomeScreen) so it
+  // remains reachable during a mid-match check without unmounting the panel
+  // when the screen changes — and because the panel renders at App level,
+  // above every screen, same pattern as the entry door.
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   // The front door. Asked once, remembered, reopenable from the wallet button.
   // It renders OVER a mounted, playable app rather than in front of it — see
   // EntryScreen: if it fails, the game is what's left.
@@ -228,6 +236,19 @@ function App() {
         />
       )}
 
+      {leaderboardOpen && (
+        <LeaderboardPanel
+          persistence={persistence}
+          currentUserId={auth.session?.user.id}
+          // The "N more to qualify" hint is skipped for now — the economy
+          // hook does not expose a matches-completed count and adding one
+          // just for a hint isn't worth the plumbing. The panel falls back
+          // to `notOnBoard` copy when the caller is above rank 100 or
+          // below the qualify threshold.
+          onClose={() => setLeaderboardOpen(false)}
+        />
+      )}
+
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
           which getScreen maps to 'home', and deliberately keeps `format`. */}
       <RoundTrouble trouble={rounds.trouble} onRetry={rounds.retry} onLeave={handleLeave} />
@@ -312,6 +333,12 @@ function App() {
                 // worse than no button.
                 onPlayFriend={
                   MULTIPLAYER_UI_ENABLED && auth.status === 'authenticated' ? mp.open : undefined
+                }
+                // The leaderboard button. Guests never see it — the RPC is
+                // authenticated-only, so a button that cannot work is worse
+                // than no button. Same rule as onPlayFriend above.
+                onOpenLeaderboard={
+                  auth.status === 'authenticated' ? () => setLeaderboardOpen(true) : undefined
                 }
               />
             )}

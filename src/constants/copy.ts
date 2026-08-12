@@ -154,6 +154,28 @@ export const copy = {
     subtitle: 'Rock. Paper. Scissors. Outsmart the bot.',
     formatLabel: 'Choose a format',
     startButton: 'Start game',
+    leaderboardButton: 'Leaderboard',
+  },
+  leaderboard: {
+    title: 'Leaderboard',
+    subtitle: 'Ranked by wins. Only finalized matches count.',
+    close: 'Close',
+    loading: 'Loading the board…',
+    error: (message: string) => `Couldn't load the board: ${message}`,
+    emptyBoard: (n: number) =>
+      `No qualifying players yet — play ${n} completed matches to be the first.`,
+    qualifyHint: (n: number) =>
+      `Play ${n} more completed ${n === 1 ? 'match' : 'matches'} to appear on the board.`,
+    notOnBoard:
+      'You have played enough to qualify, but your row is outside the top 100.',
+    youTag: '(you)',
+    headers: {
+      rank: '#',
+      player: 'Player',
+      wins: 'Wins',
+      played: 'Played',
+      winRate: 'Win %',
+    },
   },
   formats: {
     single: 'Single Round',
