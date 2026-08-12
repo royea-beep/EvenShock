@@ -68,11 +68,19 @@ network; stake tables are flag-off at three independent database gates.
    inspection, not enforced by a test.
 5. **No velocity monitoring or anomaly alerting** beyond the owner digest. No
    detection of two accounts sharing an IP or device.
-6. **Leaked-password protection is off** in Supabase Auth. Low impact under
-   wallet auth; free to enable.
-7. **The stake e2e harness has never run.** Written, unrunnable from the build
+6. **The stake e2e harness has never run.** Written, unrunnable from the build
    environment (no egress). The RPC layer is proven by a live settled match; the
    deployed-function layer is not.
+
+## Not applicable
+
+- **Leaked-password protection (HIBP) is off in Supabase Auth, deliberately.**
+  Sign-in is Sign-In-With-Solana against a wallet signature; there is no
+  password field, no password reset, and no credential to appear in a breach
+  corpus. Enabling it would guard a vector this product does not have, and
+  would leave a later reader believing password auth exists somewhere. The
+  advisor stays as an INFO note with this justification rather than being
+  cleared by enabling a control for an absent surface.
 
 ## Abuse surfaces
 
