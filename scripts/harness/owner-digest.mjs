@@ -31,6 +31,11 @@ if (!SERVICE_ROLE_KEY) {
 
 const alertMode = process.argv.includes('--alert');
 const jsonMode = process.argv.includes('--json');
+// Webhook URL for alert delivery. Prefer --webhook=<url>, fall back to the
+// MONITOR_WEBHOOK_URL env var so a GitHub Actions secret can supply it
+// without the URL appearing in the workflow file or the process argv.
+const webhookArg = process.argv.find((a) => a.startsWith('--webhook='));
+const webhookUrl = (webhookArg ? webhookArg.split('=')[1] : '') || process.env.MONITOR_WEBHOOK_URL || '';
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -133,6 +138,32 @@ console.log(`\nowner-money-digest — ${digest.as_of}\n`);
   if (u.count > T.unexplained_credits_red) alert(`UNEXPLAINED CREDIT: ${u.count} payments without matching ledger row`);
 }
 
+// Stake settlement drift — mp_tables claims vs actual ledger + house_ledger.
+// Any drift means a settlement RPC wrote its accounting only partway; the
+// money is not wrong (per-user conservation catches that) but the audit trail
+// is. One known historical drift row from a pre-fix settlement RPC will show
+// here until it is corrected or accepted.
+{
+  const s = digest.stake_settlement ?? { ok: true, drifted_count: 0, drifted: [] };
+  console.log(`${okMark(s.ok)}  stake_settlement_drift: ${s.drifted_count} table(s)`);
+  if (Array.isArray(s.drifted)) {
+    for (const row of s.drifted) {
+      console.log(`         ${DIM}${row.table_id.slice(0, 8)}…${RESET}  claim(pot=${row.claim_pot}, payout=${row.claim_payout}, rake=${row.claim_rake})  actual(posted=${row.actual_posted}, payout=${row.actual_payout}, rake=${row.actual_rake})`);
+    }
+  }
+  if (!s.ok) {
+    // Historical drift on 0dca3e39 is known and accepted; anything BEYOND
+    // that one row is a new incident to shout about.
+    const KNOWN = new Set(['0dca3e39-5eeb-4503-a2c1-373905dceca3']);
+    const novel = (s.drifted ?? []).filter((r) => !KNOWN.has(r.table_id));
+    if (novel.length > 0) {
+      alert(`NEW STAKE SETTLEMENT DRIFT: ${novel.length} table(s) — ${novel.map((r) => r.table_id.slice(0, 8)).join(', ')}`);
+    } else {
+      warn(`stake_settlement drift confined to ${s.drifted_count} known historical row(s)`);
+    }
+  }
+}
+
 // Payments
 {
   const p = digest.payments;
@@ -216,7 +247,28 @@ if (warnings.length > 0) {
 if (alerts.length > 0) {
   console.log(`${RED}alerts:${RESET}`);
   for (const a of alerts) console.log(`  ${RED}✖${RESET} ${a}`);
-  console.error(`ALERT ${new Date(digest.as_of).toISOString()} ${alerts.join(' | ')}`);
+  const summary = `ALERT ${new Date(digest.as_of).toISOString()} ${alerts.join(' | ')}`;
+  console.error(summary);
+  if (webhookUrl) {
+    // Discord webhooks accept {content: "..."} with a 2000-char limit; ntfy
+    // accepts a raw body. This payload works for both because Discord's JSON
+    // shape is the strict one — a ntfy server ignores the wrapper keys and
+    // just posts the raw body when we swap payloads if we ever add a
+    // provider flag. For now, one shape.
+    try {
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: `EvenShock money alert: ${summary}`.slice(0, 1900) }),
+      });
+      if (!res.ok) console.error(`webhook post failed: HTTP ${res.status}`);
+    } catch (err) {
+      // A webhook that is down MUST NOT hide the alert. The exit code and
+      // the stderr summary remain the primary channel; the webhook is
+      // best-effort notification.
+      console.error(`webhook post error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
   process.exit(alertMode ? 1 : 0);
 }
 if (warnings.length === 0 && alerts.length === 0) {

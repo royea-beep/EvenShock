@@ -87,8 +87,25 @@ curl -sSf -d "🚨 EvenShock: $summary" ntfy.sh/evenshock-alerts-$RANDOM_TOPIC
 ```
 Any topic name is a "channel"; subscribe from the phone app.
 
-## The decision that isn't in this doc
+## Wiring — what actually shipped
 
-Which channel matches your inbox habits. That's the whole question, and
-the reason this decision is not mine to make. When you say "wire the
-digest to X", I do the 15 minutes of plumbing.
+The generic wiring is now in `.github/workflows/monitor.yml`. It runs the
+digest every 15 minutes and POSTs the alert summary to
+`secrets.MONITOR_WEBHOOK_URL` when a RED condition trips. The webhook is
+provider-agnostic (JSON `{content: "..."}` shape works for Discord; ntfy
+ignores the wrapper keys and posts the body).
+
+To make it live, add four repo secrets (`Settings → Secrets and variables →
+Actions`):
+
+  - `SUPABASE_URL`               (the project URL, no trailing slash)
+  - `SUPABASE_ANON_KEY`          (public anon key)
+  - `SUPABASE_SERVICE_ROLE_KEY`  (service role — required for the digest RPC)
+  - `MONITOR_WEBHOOK_URL`        (the Discord/ntfy/etc URL from your provider)
+
+The workflow reads them into env for one process and never writes them to
+files, logs, or job outputs. Test it end-to-end with a manual run
+(`Actions → monitor → Run workflow`) once — the run should exit 0 (no red
+conditions today) and no message should be posted. Then deliberately trip
+one red condition (e.g., insert a ledger row with a delta that breaks
+conservation) and re-run to confirm the webhook posts and the run fails.
