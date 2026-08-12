@@ -328,6 +328,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return CHAIN ? await reconcile(CHAIN, db, userId) : CHAIN_UNCONFIGURED();
     case 'geo':
       return await geo(req, db, userId);
+    case 'owner_digest':
+      return await ownerDigest(db, userId);
     default:
       return fail('bad_request', `Unknown action: ${String(body.action)}`, 400);
   }
@@ -588,6 +590,20 @@ async function health(db: SupabaseClient, userId: string) {
   const refused = rpcError(data);
   if (refused) return refused;
 
+  return json(data);
+}
+
+/**
+ * Owner-only money-anomaly snapshot. Delegates to `owner_money_digest`, which
+ * is where the actual gating and the anomaly rollup live — this handler is
+ * just the HTTPS wrapper. Any non-owner caller receives `{"error":"forbidden"}`
+ * from the RPC itself, so the check is not duplicated at this layer.
+ */
+async function ownerDigest(db: SupabaseClient, userId: string) {
+  const { data, error } = await db.rpc('owner_money_digest', { p_user_id: userId });
+  if (error) return fail('db_error', error.message, 500);
+  const refused = rpcError(data);
+  if (refused) return refused;
   return json(data);
 }
 
