@@ -12,7 +12,12 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.harness.tsbuildinfo",
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
-    "types": ["node"],
+    // `vite/client` alongside `node`: the harness imports src/data modules,
+    // and those now reach constants/features.ts, which reads import.meta.env.
+    // Without this the harness project typechecks app code with no notion of
+    // Vite's env — and reports the error against features.ts, which is three
+    // files away from the import that caused it.
+    "types": ["node", "vite/client"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
