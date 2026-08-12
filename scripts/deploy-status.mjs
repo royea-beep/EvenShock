@@ -62,7 +62,10 @@ function flags() {
     if (fromProcess !== undefined) return fromProcess;
     return env.match(new RegExp(`^${key}=(.*)$`, 'm'))?.[1]?.trim() ?? '';
   };
-  return ['VITE_ENABLE_MULTIPLAYER', 'VITE_ENABLE_FAST_MODE'].map((k) => [
+  // STAKE_TABLES belongs here more than either of the others: it is the flag
+  // whose state a reader most needs to be sure of, and it was missing from
+  // this report for exactly as long as it existed.
+  return ['VITE_ENABLE_MULTIPLAYER', 'VITE_ENABLE_STAKE_TABLES', 'VITE_ENABLE_FAST_MODE'].map((k) => [
     k.replace('VITE_ENABLE_', ''),
     read(k) === 'true' ? 'ON' : 'off',
   ]);
