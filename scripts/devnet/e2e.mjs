@@ -89,6 +89,21 @@ await play2({ action: 'economy_state' });
 
 const treasuryBefore = await tokenBalance(connection, state.mint, state.treasury);
 
+// Money gate needs a resolved, non-blocked geo verdict on file. The real
+// client calls `geo`, which resolves the caller's public IP via ipwho.is and
+// persists — but the machine running this harness is in a jurisdiction the
+// pre-launch blocklist covers, so calling `geo` here would leave a verdict
+// that `geo_allows_money` correctly refuses. Seed with an allowed country via
+// service role instead: the suite is testing PAYMENT, not the geo gate.
+for (const id of ids) {
+  await admin.rpc('geo_record_verdict', {
+    p_user_id: id,
+    p_country: 'DE',
+    p_source: 'harness',
+    p_is_datacenter: false,
+  }).throwOnError();
+}
+
 // --------------------------------------------------------------------- ToS
 
 {

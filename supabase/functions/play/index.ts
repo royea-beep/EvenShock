@@ -327,7 +327,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'reconcile':
       return CHAIN ? await reconcile(CHAIN, db, userId) : CHAIN_UNCONFIGURED();
     case 'geo':
-      return await geo(req);
+      return await geo(req, db, userId);
     default:
       return fail('bad_request', `Unknown action: ${String(body.action)}`, 400);
   }
@@ -529,32 +529,56 @@ async function buy(db: SupabaseClient, userId: string, body: Record<string, unkn
 // forge in the request body. Same source `clientIp` uses for the failure
 // limiter, so the two agree by construction.
 //
-// This is coarse geolocation for gating (region-locked features, tax hints,
-// content flags) — never a substitute for authenticated country. ipwho.is is
-// free and unauthenticated; a bad answer here is "unknown", never a crash.
-async function geo(req: Request): Promise<Response> {
+// PERSISTS the verdict to `geo_verdicts` via `geo_record_verdict`, because the
+// money gate `geo_allows_money` (called inside `create_payment_intent`) reads
+// from that table. A client that hits `create_intent` without ever having
+// resolved geo would get `geo_unknown` — so the client is expected to call
+// this action once on entry, before any money action.
+//
+// ipwho.is is free and unauthenticated; a bad answer here is "unknown", never
+// a crash — but the persisted verdict for an unknown lookup is NOT written, so
+// the money gate stays fail-closed rather than accidentally allowing everyone.
+async function geo(req: Request, db: SupabaseClient, userId: string): Promise<Response> {
   const ip = clientIp(req);
   if (ip === 'unknown' || ip === '127.0.0.1' || ip.startsWith('::')) {
     return json({ ip, country_code: null, country: null, source: 'local' });
   }
+  let doc: any = null;
   try {
-    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?fields=success,country,country_code,region,city`);
-    const doc = await res.json();
-    if (!doc?.success) {
-      return json({ ip, country_code: null, country: null, source: 'ipwho.is', error: doc?.message ?? 'lookup_failed' });
-    }
-    return json({
-      ip,
-      country_code: typeof doc.country_code === 'string' ? doc.country_code : null,
-      country: typeof doc.country === 'string' ? doc.country : null,
-      region: typeof doc.region === 'string' ? doc.region : null,
-      city: typeof doc.city === 'string' ? doc.city : null,
-      source: 'ipwho.is',
-    });
+    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?fields=success,country,country_code,region,city,connection`);
+    doc = await res.json();
   } catch (err) {
-    // A geo lookup that is down must not break the caller. Return unknown.
     return json({ ip, country_code: null, country: null, source: 'ipwho.is', error: err instanceof Error ? err.message : 'lookup_error' });
   }
+  if (!doc?.success) {
+    return json({ ip, country_code: null, country: null, source: 'ipwho.is', error: doc?.message ?? 'lookup_failed' });
+  }
+  const country_code = typeof doc.country_code === 'string' ? doc.country_code : null;
+  // ipwho.is exposes `connection.type` — 'hosting' means a datacenter IP,
+  // which is the signal `geo_allows_money` uses to refuse money from VPN exit
+  // nodes and cloud providers.
+  const is_datacenter = doc?.connection?.type === 'hosting';
+
+  if (country_code) {
+    // Best-effort persist. A failure here must not break the caller — the next
+    // money action will refuse with `geo_unknown` and the client will retry.
+    await db.rpc('geo_record_verdict', {
+      p_user_id: userId,
+      p_country: country_code,
+      p_source: 'ipwho.is',
+      p_is_datacenter: is_datacenter,
+    });
+  }
+
+  return json({
+    ip,
+    country_code,
+    country: typeof doc.country === 'string' ? doc.country : null,
+    region: typeof doc.region === 'string' ? doc.region : null,
+    city: typeof doc.city === 'string' ? doc.city : null,
+    is_datacenter,
+    source: 'ipwho.is',
+  });
 }
 
 async function health(db: SupabaseClient, userId: string) {
