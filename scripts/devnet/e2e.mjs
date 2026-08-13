@@ -61,12 +61,28 @@ const chipsFor = (usdc) => Math.floor(Number(usdc) * RATE);
 
 // ------------------------------------------------------------------- reset
 //
-// Scoped to the two harness users and refused for anything else, so re-running
-// is safe and the expected totals below are exact rather than cumulative.
+// This used to be bare table deletes, and one of them destroyed a settled
+// stake match's ledger rows (the 0dca3e39 incident, 2026-08-12): "everything
+// this user ever did" included half of an OPPONENT's financial history. The
+// database now refuses bare deletes on money tables outright, and this goes
+// through harness_reset_user() — the one sanctioned door. It refuses any user
+// not marked is_harness, and any user whose history is entangled with another
+// player's (stake rows, multiplayer seats). Its deletes are audited.
+//
+// When it refuses, the answer is a NEW identity, never a forced wipe: delete
+// .devnet/keys/<name>.json and the next run generates a fresh keypair. The old
+// account's books stay whole — that is the entire point.
 
 const ids = [state.user1.id, state.user2.id];
-for (const table of ['payments', 'ledger', 'payment_intents', 'inventory', 'tos_acceptances', 'balances']) {
-  await admin.from(table).delete().in('user_id', ids).throwOnError();
+await admin.from('profiles').update({ is_harness: true }).in('id', ids).throwOnError();
+for (const [name, id] of [['user1', state.user1.id], ['user2', state.user2.id]]) {
+  const { error } = await admin.rpc('harness_reset_user', { p_user_id: id });
+  if (error) {
+    console.error(`\n  harness_reset_user(${name}) refused: ${error.message}`);
+    console.error(`  This account's history is entangled with another player's and will not be`);
+    console.error(`  wiped. Rotate the identity instead: rm .devnet/keys/${name}.json && re-run.\n`);
+    process.exit(1);
+  }
 }
 console.log('\n  reset the two harness users\n');
 

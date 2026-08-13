@@ -99,8 +99,15 @@ network; stake tables are flag-off at three independent database gates.
    `ON DELETE RESTRICT` (20260813140000): an account with financial history
    cannot be hard-deleted — proven live, the delete refuses with 23503 — and
    the documented erasure path is anonymise-the-profile, keep-the-rows.
-   Still open: the harness resets' bare deletes now fail by design until the
-   `is_harness` path lands.
+   Harness resets now go through `harness_reset_user()` (20260813150000), the
+   one sanctioned door: it refuses users not marked `profiles.is_harness` and
+   users entangled with another player's history (stake-reason ledger rows,
+   multiplayer seats or receipts), and its deletes are audited through the
+   part-1 guard. Proven live: the human account refused (not harness), user1
+   refused (holds the repaired stake rows — permanently unresettable, by
+   design; the payment suite rotates to a fresh keypair instead), user2 reset
+   cleanly with audit. Both reset scripts now call the RPC and tell the
+   operator to rotate identities on refusal, never to force the wipe.
 10. **`tos_acceptances.user_id` is still ON DELETE CASCADE.** Deleting an
    account destroys the evidence of what that person agreed to — the same
    disease as gap 9 had, legal rather than financial. Found during the FK
