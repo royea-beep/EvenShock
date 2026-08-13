@@ -33,6 +33,10 @@ interface HomeScreenProps {
    * who could not use it anyway. Prop-absence enforcement, same pattern.
    */
   onOpenLeaderboard?: () => void;
+  /** Tournaments. Same rule as the leaderboard and the friend match: absent
+   *  for guests and absent while the flag is off, because a button that
+   *  cannot work is worse than no button. */
+  onOpenTournaments?: () => void;
 }
 
 export function HomeScreen({
@@ -46,6 +50,7 @@ export function HomeScreen({
   chipsShop,
   onPlayFriend,
   onOpenLeaderboard,
+  onOpenTournaments,
 }: HomeScreenProps) {
   return (
     <motion.div
@@ -187,6 +192,16 @@ export function HomeScreen({
           className="display-type -mt-2 min-h-11 cursor-pointer text-sm font-semibold text-muted underline decoration-dotted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
         >
           {copy.home.leaderboardButton}
+        </button>
+      )}
+
+      {onOpenTournaments && (
+        <button
+          type="button"
+          onClick={onOpenTournaments}
+          className="display-type -mt-2 min-h-11 cursor-pointer text-sm font-semibold text-muted underline decoration-dotted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+        >
+          {copy.home.tournamentsButton}
         </button>
       )}
     </motion.div>

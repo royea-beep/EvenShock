@@ -4,6 +4,22 @@ import type { Choice, MatchFormat, RoundOutcome } from '../types/game';
  * All UI copy lives here. Nothing user-facing should be a string literal in a
  * component — keeps this file the single place to translate later.
  */
+/** 1st, 2nd, 3rd, 4th… Used by the tournament result copy. */
+function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
 export const copy = {
   /**
    * The front door. Two paths, stated in full, chosen deliberately.
@@ -163,6 +179,7 @@ export const copy = {
     formatLabel: 'Choose a format',
     startButton: 'Start game',
     leaderboardButton: 'Leaderboard',
+    tournamentsButton: 'Tournaments',
   },
   leaderboard: {
     title: 'Leaderboard',
@@ -480,5 +497,74 @@ export const copy = {
     failedBody:
       "Your payment is on the blockchain and we couldn't match it to this purchase yet. Don't pay again — our reconciler scans for it and will credit you. Contact support if it hasn't landed in a few minutes.",
     failedClose: 'Close',
+  },
+
+  /**
+   * Tournaments. The same rule as `stakes` above and for the same reason: the
+   * cost appears BEFORE the commitment, never after it.
+   *
+   * The one line that is easy to leave out and matters most is `poolLine`. A
+   * tournament pool has NO house cut — every chip collected goes back out to
+   * first and second. Staying silent about that would be hiding good news, but
+   * it would also leave a player who has read the stake-table copy assuming a
+   * rake that is not there, and a player who assumes a hidden cut is a player
+   * who has stopped believing the numbers.
+   */
+  tournaments: {
+    title: 'Tournaments',
+    empty: 'No tournaments are open right now. Check back soon.',
+    close: 'Back',
+
+    entrants: (n: number, max: number) => `${n}/${max} players`,
+    entryFree: 'Free to enter',
+    entryFee: (chips: number) => `${chips} chips to enter`,
+    pool: (chips: number) => `${chips} chip prize pool`,
+
+    /** Shown on the confirm step, before a single chip moves. */
+    joinTitle: 'Enter this tournament?',
+    joinNotice: (fee: number, pool: number, entrants: number, max: number) =>
+      `Entering costs ${fee} chips. That goes straight into the prize pool, which is ${pool} chips with ${entrants} of ${max} players in.`,
+    joinFreeNotice: (entrants: number, max: number) =>
+      `This one is free to enter. ${entrants} of ${max} players are in.`,
+    poolLine:
+      'The whole pool is paid out — 65% to the winner, 35% to the runner-up. The house takes nothing from a tournament.',
+    joinConfirm: (fee: number) => (fee > 0 ? `Pay ${fee} chips and enter` : 'Enter'),
+    joinCancel: 'Not this time',
+    joining: 'Entering…',
+
+    /** Why the button is not there. A disabled control with no reason reads as
+     *  a bug — this is the same lesson as the treasury-seat copy. */
+    blocked: {
+      already_entered: "You're in this one.",
+      not_registering: 'Entry has closed.',
+      full: 'This one is full.',
+      unrateable_player: 'This account cannot enter tournaments.',
+      insufficient_chips: "You can't cover the entry fee.",
+    } as Record<string, string>,
+
+    /** The bracket. */
+    bracketTitle: 'Bracket',
+    seed: (n: number) => `#${n}`,
+    bye: 'Bye',
+    waiting: 'Waiting',
+    tbd: 'To be decided',
+    won: 'Won',
+    playNow: 'Play your match',
+    opening: 'Opening…',
+    yourMatchReady: "It's your turn — your opponent is waiting.",
+    waitingOnOthers: 'Waiting on other matches to finish.',
+    knockedOut: 'You were knocked out. You can still watch the rest.',
+
+    /** The end. Modelled on the pot screen: show the arithmetic, not just the
+     *  arrival, and say the house cut out loud even when it is zero. */
+    resultTitle: 'Tournament complete',
+    champion: (name: string) => `${name} takes it`,
+    wonTitle: (prize: number) => `You won ${prize} chips`,
+    runnerUpTitle: (prize: number) => `Runner-up: ${prize} chips`,
+    placedTitle: (position: number) => `You finished ${ordinal(position)}`,
+    breakdown: (pool: number, paid: number, prize: number, net: number) =>
+      `Pool ${pool} − house 0 = ${pool} paid out. You put in ${paid} and took ${prize} — net ${net >= 0 ? '+' : ''}${net} chips.`,
+    noPrize: (paid: number) =>
+      `You put in ${paid} chips and did not place. The pool went to the top two in full.`,
   },
 } as const;

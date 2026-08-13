@@ -21,6 +21,7 @@
     "e2e:entry": "node scripts/harness/entry-door.mjs",
     "status": "node scripts/deploy-status.mjs",
     "e2e:stake": "EVENSHOCK_LIVE=1 vitest run --config vitest.live.config.ts scripts/harness/stake-match.live.test.ts",
+    "e2e:tournament": "EVENSHOCK_LIVE=1 vitest run --config vitest.live.config.ts scripts/harness/tournament.live.test.ts",
     "e2e:skill": "vitest run --config vitest.live.config.ts scripts/harness/skill-metrics.live.test.ts",
     "e2e:load": "node scripts/harness/load-abuse.mjs",
     "monitor:digest": "node scripts/harness/owner-digest.mjs",

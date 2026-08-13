@@ -74,3 +74,22 @@ export const MULTIPLAYER_UI_ENABLED = import.meta.env.VITE_ENABLE_MULTIPLAYER ==
  * docs/stake-tables-flag.md.
  */
 export const STAKE_TABLES_ENABLED = import.meta.env.VITE_ENABLE_STAKE_TABLES === 'true';
+
+/**
+ * TOURNAMENTS RIDE ON THE FRIEND MATCH.
+ *
+ * A bracket slot is played as an ordinary mp table, so this flag is meaningful
+ * only when MULTIPLAYER_UI_ENABLED is also true — the panel is gated on both,
+ * and the "and" is deliberate rather than defensive. Shipping a bracket whose
+ * Play button cannot open a table would be a lobby that takes an entry fee for
+ * a match nobody can start, which is worse than no tournaments at all.
+ *
+ * The entry fee is NOT a stake and this flag is not a way around
+ * STAKE_TABLES_ENABLED. A stake is chips risked on the outcome of one match
+ * against one opponent; an entry fee buys a seat in a draw whose whole pool is
+ * paid back out to the top two. Every table a tournament creates is stake
+ * zero, hard-coded server-side in tournament_open_match — so the wagering flag
+ * stays off, and nothing here approaches the trigger that rejects staked
+ * inserts.
+ */
+export const TOURNAMENTS_UI_ENABLED = import.meta.env.VITE_ENABLE_TOURNAMENTS === 'true';
