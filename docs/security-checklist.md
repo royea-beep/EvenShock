@@ -95,10 +95,18 @@ network; stake tables are flag-off at three independent database gates.
    deletions are audited with the full row. It deliberately covers all rows,
    not just table-linked ones: the repaired 0dca3e39 rows carry
    `mp_table_id null`, so a linkage-keyed guard would have missed exactly
-   the rows the incident taught us about. Still open: `ledger.user_id` is
-   `ON DELETE CASCADE` (account deletion destroys history — RESTRICT with
-   anonymisation is next), and the harness resets' bare deletes now fail by
-   design until the `is_harness` path lands.
+   the rows the incident taught us about. `ledger.user_id` is now
+   `ON DELETE RESTRICT` (20260813140000): an account with financial history
+   cannot be hard-deleted — proven live, the delete refuses with 23503 — and
+   the documented erasure path is anonymise-the-profile, keep-the-rows.
+   Still open: the harness resets' bare deletes now fail by design until the
+   `is_harness` path lands.
+10. **`tos_acceptances.user_id` is still ON DELETE CASCADE.** Deleting an
+   account destroys the evidence of what that person agreed to — the same
+   disease as gap 9 had, legal rather than financial. Found during the FK
+   sweep, deliberately not changed in the same commit as the ledger FK; it
+   needs its own decision (the record may *have* to be erasable on request,
+   which is exactly why it should not be decided in passing).
 
 ## Not applicable
 
