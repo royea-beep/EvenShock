@@ -31,6 +31,9 @@ import { useMultiplayer } from './hooks/useMultiplayer';
 import { MULTIPLAYER_UI_ENABLED } from './constants/features';
 import { RoundTrouble } from './components/RoundTrouble';
 import { LeaderboardPanel } from './components/LeaderboardPanel';
+import { TournamentsPanel } from './components/TournamentsPanel';
+import { useTournaments } from './hooks/useTournaments';
+import { TOURNAMENTS_UI_ENABLED } from './constants/features';
 import { usePersistence } from './hooks/usePersistence';
 // TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
 import { ImpactVariantBadge } from './components/ImpactVariantBadge';
@@ -66,6 +69,11 @@ function App() {
   // guest mode is not bent to allow it.
   const mp = useMultiplayer(auth.status === 'authenticated');
   const persistence = usePersistence(auth.status === 'authenticated');
+  // Tournaments. Signed-in only, like the friend match it is built on: a
+  // bracket slot is an mp table, and an mp table needs an identity on both
+  // sides. The panel renders at App level for the same reason the leaderboard
+  // does — it must survive a screen change without unmounting.
+  const tournaments = useTournaments(auth.status === 'authenticated');
   // Leaderboard open/closed. State lives here (not in HomeScreen) so it
   // remains reachable during a mid-match check without unmounting the panel
   // when the screen changes — and because the panel renders at App level,
@@ -249,6 +257,20 @@ function App() {
         />
       )}
 
+      {/* Tournaments. Pressing Play in the bracket opens that slot's mp table
+          and hands the invite code straight to the friend-match flow — the
+          panel closes and the versus screen owns every screen from there. Both
+          players take the same route: mp_join_table returns `already_seated`
+          for the one who created the table, so one call covers both sides. */}
+      <TournamentsPanel
+        tournaments={tournaments}
+        onPlay={(inviteCode) => {
+          tournaments.close();
+          mp.open();
+          mp.join(inviteCode);
+        }}
+      />
+
       {/* The only route back to Home. playAgain() resets matchStatus to `idle`,
           which getScreen maps to 'home', and deliberately keeps `format`. */}
       <RoundTrouble trouble={rounds.trouble} onRetry={rounds.retry} onLeave={handleLeave} />
@@ -339,6 +361,16 @@ function App() {
                 // than no button. Same rule as onPlayFriend above.
                 onOpenLeaderboard={
                   auth.status === 'authenticated' ? () => setLeaderboardOpen(true) : undefined
+                }
+                // Gated on BOTH flags: a tournament match is played as a
+                // friend match, so a bracket without multiplayer would take an
+                // entry fee for a game nobody could start.
+                onOpenTournaments={
+                  TOURNAMENTS_UI_ENABLED &&
+                  MULTIPLAYER_UI_ENABLED &&
+                  auth.status === 'authenticated'
+                    ? tournaments.open
+                    : undefined
                 }
               />
             )}

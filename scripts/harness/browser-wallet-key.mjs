@@ -30,13 +30,14 @@
  * fake, and unacceptable on mainnet. The devnet guard is `assertDevnet`;
  * do not weaken it.
  */
-import { createHash } from 'node:crypto';
 import { Keypair } from '@solana/web3.js';
+import { BROWSER_SEED } from './wallets.mjs';
 
-/** The 32-byte seed. Change the label to rotate — not the digest algorithm. */
-export const BROWSER_SEED = new Uint8Array(
-  createHash('sha256').update('evenshock/browser/v1').digest(),
-);
+// The seed moved to wallets.mjs, which is also what registers this address as a
+// harness wallet. Defining it here as well would let the two drift, and a
+// harness whose address is not registered is created as an ORDINARY PLAYER —
+// which is how thirteen synthetic accounts reached production untagged.
+export { BROWSER_SEED };
 
 /** The derived keypair the browser harness signs with. */
 export const BROWSER_WALLET = Keypair.fromSeed(BROWSER_SEED);

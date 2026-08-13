@@ -33,7 +33,7 @@
  *   - MAX_PARALLEL — no single Promise.all() launches more than 200 requests
  *   - PER_WORKLOAD_TIMEOUT — 60s
  */
-import { createHash } from 'node:crypto';
+import { assertLoadUsersRegistered, loadSeed } from './wallets.mjs';
 import { performance } from 'node:perf_hooks';
 import { createClient } from '@supabase/supabase-js';
 import { Keypair } from '@solana/web3.js';
@@ -57,11 +57,16 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 
 // -------------------------------------------------------------- test users
 
-/** Deterministic keypair for load user #i. Well-known secret, devnet only. */
+/** Deterministic keypair for load user #i. Well-known secret, devnet only.
+ *  The seed comes from wallets.mjs, which is the same list that registers these
+ *  addresses as harness wallets — so every user this creates is born flagged. */
 function loadKeypair(i) {
-  const seed = createHash('sha256').update(`evenshock/load/v1/${i}`).digest();
-  return Keypair.fromSeed(new Uint8Array(seed));
+  return Keypair.fromSeed(loadSeed(i));
 }
+
+// Refuses before signing anybody in: users past the registered cap would be
+// created as ordinary players and could reach the ladder.
+assertLoadUsersRegistered(N_USERS);
 
 console.log(`load-abuse — signing in ${N_USERS} deterministic harness users`);
 const t0 = performance.now();

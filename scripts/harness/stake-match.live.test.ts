@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createMultiplayer, type MultiplayerApi } from '../../src/data/multiplayer';
 import { signInWithKeypair } from './auth.mjs';
 import { ANON_KEY, SERVICE_ROLE_KEY, SUPABASE_URL } from './env.mjs';
+import { SEED_STAKE_A as SEED_A, SEED_STAKE_B as SEED_B } from './wallets.mjs';
 
 /**
  * A full stake match, two real accounts, against the deployed `mp` function.
@@ -53,8 +54,6 @@ const EXPECTED_RAKE = 1; // 5% of 20, and whole by construction
 const EXPECTED_PAYOUT = EXPECTED_POT - EXPECTED_RAKE;
 
 /** Fixed seeds: throwaway identities in a test project, not wallets. */
-const SEED_A = new Uint8Array(32).fill(11);
-const SEED_B = new Uint8Array(32).fill(12);
 
 let admin: SupabaseClient;
 let apiA: MultiplayerApi;
