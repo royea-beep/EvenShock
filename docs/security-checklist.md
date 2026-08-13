@@ -35,6 +35,7 @@ network; stake tables are flag-off at three independent database gates.
 | No client write grant on money tables | grants: SELECT only, RLS on | live grant sweep | **done** |
 | No anon-executable function | live grant sweep | 0 rows | **done** |
 | A live round never discloses the opponent's move | `mp_state` shape; `verify_match_integrity` state filter | leak fix verified in deployed function | **done** |
+| No silent deletion of financial history — service role included | BEFORE DELETE triggers on `ledger` + `house_ledger` (20260813130000); bypass requires a transaction-local named authorization and is audited with the full row | live: unauthorized deletes refused on both tables, authorized delete audited, test rolled back | **done** |
 
 ## Rate limits
 
@@ -87,13 +88,17 @@ network; stake tables are flag-off at three independent database gates.
    the identity verified to close in the same transaction, and the
    `settlement_anomaly` record marked repaired. Live after: stake rows sum −1
    against house +1, identity gap 0, zero balance drift.
-9. **Ledger durability is unenforced.** Harness resets can delete settled
-   money rows (the actual cause of 0dca3e39), and `ledger.user_id` is
-   `ON DELETE CASCADE`, so account deletion destroys financial history. The
-   fixes — a BEFORE DELETE guard on `ledger`, FK to RESTRICT with
-   anonymisation, an `is_harness` marker — are designed and not yet built.
-   Note for the guard design: the repaired rows carry `mp_table_id null`
-   (their table was swept), so the guard must not key on `mp_table_id` alone.
+9. **Ledger durability is partially enforced.** The BEFORE DELETE guard is
+   live (20260813130000): every row on `ledger` and `house_ledger` refuses
+   deletion — service role included — unless a transaction-local
+   `evenshock.ledger_delete_authorization` names a reason, and authorized
+   deletions are audited with the full row. It deliberately covers all rows,
+   not just table-linked ones: the repaired 0dca3e39 rows carry
+   `mp_table_id null`, so a linkage-keyed guard would have missed exactly
+   the rows the incident taught us about. Still open: `ledger.user_id` is
+   `ON DELETE CASCADE` (account deletion destroys history — RESTRICT with
+   anonymisation is next), and the harness resets' bare deletes now fail by
+   design until the `is_harness` path lands.
 
 ## Not applicable
 
