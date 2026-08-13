@@ -97,9 +97,33 @@ export function EntryScreen({ onConnect, onGuest, onWalletChosen, onDismiss, sho
       // themed (the cards carry the theme's border, radius and shadow); the
       // scrim and the text directly on it are the two things that must contrast
       // in all seven themes, so they do not take part.
-      className="fixed inset-0 z-50 overflow-y-auto bg-[rgba(10,10,14,0.94)] p-4 backdrop-blur-sm sm:p-8"
+      //
+      // 75%, not the 94% it launched at: the live game renders underneath and
+      // SHOULD show through — it orients ("there is a game behind this door")
+      // and it sells. Contrast holds at the worst case: even over a pure-white
+      // backdrop the composite is ~rgb(71,71,74), which puts solid white text
+      // at ~9:1 and white/70 at ~5.5:1 — both past AA — and every theme's real
+      // backdrop is darker than that. The backdrop-blur is load-bearing here:
+      // it keeps the game legible as shapes, not as competing text.
+      className="fixed inset-0 z-50 overflow-y-auto bg-[rgba(10,10,14,0.75)] p-4 backdrop-blur-sm sm:p-8"
     >
-      <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-center gap-4 sm:gap-6">
+      <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-center gap-3 sm:gap-6">
+        {/* Explain first, ask second: on a first visit the "what is this"
+            block sits ABOVE the question headline. Eyes skip middle paragraphs
+            between a headline and cards, which is where this used to live. */}
+        {showIntro && (
+          <section
+            aria-label={copy.entry.intro.headline}
+            className="mx-auto max-w-xl space-y-1.5 rounded-md bg-white/5 p-3 text-xs text-white/80 shadow-inner sm:space-y-2 sm:p-4 sm:text-sm"
+          >
+            <p className="text-white/95">{copy.entry.intro.gameLine}</p>
+            <p>{copy.entry.intro.walletLine}</p>
+            <p className="text-[0.68rem] font-semibold tracking-wide text-white/70 uppercase sm:text-xs">
+              {copy.entry.intro.adultLine}
+            </p>
+          </section>
+        )}
+
         <div className="space-y-1 text-center">
           <h1
             id="entry-title"
@@ -109,17 +133,6 @@ export function EntryScreen({ onConnect, onGuest, onWalletChosen, onDismiss, sho
           </h1>
           <p className="text-xs text-white/70 sm:text-base">{copy.entry.subtitle}</p>
         </div>
-
-        {showIntro && (
-          <section
-            aria-label={copy.entry.intro.headline}
-            className="mx-auto max-w-xl space-y-2 rounded-md bg-white/5 p-4 text-xs text-white/80 shadow-inner sm:text-sm"
-          >
-            <p className="text-white/95">{copy.entry.intro.gameLine}</p>
-            <p>{copy.entry.intro.walletLine}</p>
-            <p className="text-white/70">{copy.entry.intro.chipsLine}</p>
-          </section>
-        )}
 
         <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
           <PathCard
@@ -135,12 +148,13 @@ export function EntryScreen({ onConnect, onGuest, onWalletChosen, onDismiss, sho
           <PathCard
             title={copy.entry.walletTitle}
             tagline={copy.entry.walletTagline}
-            // The last two bullets are multiplayer. They describe something the
-            // server can already do and this app cannot yet, so they carry a
+            // The FIRST bullet is multiplayer (it leads because it is the
+            // strongest hook). It describes something the server can already
+            // do; if the app ever ships without the UI for it, it carries a
             // tag until MULTIPLAYER_UI_ENABLED flips — see constants/features.
             bullets={copy.entry.walletBullets.map((text, i) => ({
               text,
-              soon: i >= 2 && !MULTIPLAYER_UI_ENABLED,
+              soon: i === 0 && !MULTIPLAYER_UI_ENABLED,
             }))}
             limit={copy.entry.walletLimit}
             note={copy.entry.walletNeeds}

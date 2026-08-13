@@ -16,12 +16,15 @@ export const copy = {
    * fairly.
    */
   entry: {
-    /** Shown ONLY on the very first visit, above the two path cards.
+    /** Shown ONLY on the very first visit, ABOVE the "How do you want to
+     * play?" headline — explain first, ask second. Eyes skip middle
+     * paragraphs sandwiched between a headline and cards, which is where
+     * this used to sit.
      *
-     * Three lines, in order of what a first-timer needs to know before they
-     * can pick a path: what the game is, why an account (wallet) matters,
-     * what chips are (and are not — this is the honest framing that also
-     * does the compliance work of naming "no cash value" before the shop).
+     * Two paragraphs and one compliance line, in that order: what the game
+     * is; why a wallet matters and what chips are NOT (the no-cash-value
+     * framing does the honest-selling and the compliance work in one
+     * breath); and the 18+ line — there from day one, not retrofitted.
      *
      * Suppressed after the first visit via the entryIntroSeen storage flag —
      * a returning player who reopens the door via "Guest or wallet?" has
@@ -30,11 +33,10 @@ export const copy = {
     intro: {
       headline: 'New here?',
       gameLine:
-        'EvenShock is rock-paper-scissors against a bot. Quick matches, XP for playing, chips for winning.',
+        'EvenShock is rock-paper-scissors — quick matches against the bot or a friend, XP for playing, chips for winning.',
       walletLine:
-        'A wallet is optional. It gives you an account that follows you across browsers, and unlocks buying chips and playing a friend.',
-      chipsLine:
-        'Chips have no cash value. They unlock cosmetic looks and, soon, matches against friends — nothing you can cash out.',
+        'A wallet is optional. It keeps your progress on the server, on any browser, and unlocks buying chips — chips have no cash value, they buy cosmetic looks and nothing you can cash out.',
+      adultLine: 'Chip purchases are for adults 18 and over.',
     },
     title: 'How do you want to play?',
     subtitle: 'Pick once. You can switch whenever you like.',
@@ -51,11 +53,17 @@ export const copy = {
 
     walletTitle: 'Connect a wallet',
     walletTagline: 'An account that follows you.',
+    // Ordered by pull, strongest first: a friend is the hook, persistence is
+    // the practical case, purchases come last. The stake-tables line that
+    // used to end this list is GONE, not tagged "soon": stakes are flag-off
+    // pending counsel with no date attached, and a public screen advertising
+    // wagering money-bought chips — even provisionally — is the exact
+    // exposure the flag exists to avoid. The line returns when the flag
+    // flips and counsel has cleared the copy, not before.
     walletBullets: [
+      'Play a friend with an invite code',
       'XP and chips kept on the server, on any browser',
       'Buy chips and unlock the paid looks',
-      'Play a friend with an invite code',
-      'Free tables or chip stakes, winner takes the pot',
     ],
     walletLimit: 'Starts a fresh account — guest progress stays in this browser.',
     walletCta: 'Connect wallet',
