@@ -31,6 +31,7 @@ import { createMultiplayer, type MultiplayerApi } from '../../src/data/multiplay
 import { createTournaments, nextPlayableSlot, type TournamentsApi } from '../../src/data/tournaments';
 import { signInWithKeypair } from './auth.mjs';
 import { ANON_KEY, SUPABASE_URL } from './env.mjs';
+import { SEED_STAKE_A as SEED_A, SEED_STAKE_B as SEED_B } from './wallets.mjs';
 
 if (process.env.EVENSHOCK_LIVE !== '1') {
   throw new Error(
@@ -45,8 +46,6 @@ if (!TOURNAMENT_ID) {
 }
 
 /** The two funded harness wallets the stake suite already uses. */
-const SEED_A = new Uint8Array(32).fill(11);
-const SEED_B = new Uint8Array(32).fill(12);
 
 let clientA: SupabaseClient;
 let clientB: SupabaseClient;

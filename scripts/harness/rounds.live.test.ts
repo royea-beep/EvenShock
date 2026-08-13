@@ -33,6 +33,7 @@ import { CHOICES, computeCommitment, getRoundOutcome, type Choice } from '../../
 import { submitLatencySummary } from '../../src/utils/latency';
 import { signInWithKeypair } from './auth.mjs';
 import { ANON_KEY, SERVICE_ROLE_KEY, SUPABASE_URL } from './env.mjs';
+import { SEED_ROUNDS as PLAYER_SEED } from './wallets.mjs';
 
 if (process.env.EVENSHOCK_LIVE !== '1') {
   throw new Error(
@@ -54,7 +55,6 @@ if (!SERVICE_ROLE_KEY) {
  * profile per run. Derived from a constant seed and therefore reproducible:
  * this is a throwaway identity in a test project, not a wallet.
  */
-const PLAYER_SEED = new Uint8Array(32).fill(7);
 const player = Keypair.fromSeed(PLAYER_SEED);
 
 let admin: SupabaseClient;

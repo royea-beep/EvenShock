@@ -70,6 +70,40 @@ export async function signInWithKeypair(supabaseUrl, anonKey, keypair, label = '
   }
   if (!data.session) throw new Error(`sign-in for ${label} returned no session`);
 
+  // THE BACKSTOP. A harness account must be born is_harness = true, stamped by
+  // the provisioning trigger from the `harness_wallets` registry. Checking it
+  // HERE, at the one chokepoint every harness goes through, is what makes the
+  // guarantee real: a seed added to wallets.mjs but never migrated fails on its
+  // first run with an explanation, instead of silently creating an ordinary
+  // player who can rank, enter tournaments and hold chips.
+  //
+  // This is not paranoia about a hypothetical. It is exactly what happened:
+  // thirteen synthetic accounts reached production unflagged, and two of them
+  // became the only two rows on the ladder. A generated migration and a drift
+  // test can both be skipped by someone in a hurry; a harness that refuses to
+  // start cannot be.
+  const { data: profile, error: profileError } = await client
+    .from('profiles')
+    .select('is_harness')
+    .eq('id', data.session.user.id)
+    .single();
+
+  if (profileError) {
+    throw new Error(
+      `sign-in for ${label} succeeded but its profile could not be read: ${profileError.message}`,
+    );
+  }
+  if (!profile?.is_harness) {
+    throw new Error(
+      `refusing to hand back a session for ${label} (${keypair.publicKey.toBase58()}):\n` +
+        `  this wallet's profile is NOT flagged is_harness, so it is an ordinary player.\n` +
+        `  A harness account that can rank, enter tournaments or hold meaningful chips is\n` +
+        `  how synthetic accounts ended up as the only entries on the ladder.\n` +
+        `  Fix: add the seed to scripts/harness/wallets.mjs, regenerate\n` +
+        `  supabase/migrations/*_harness_wallets_born_flagged.sql, and apply it.`,
+    );
+  }
+
   return {
     client,
     session: data.session,
