@@ -3,6 +3,8 @@
  *
  *   npm run monitor:digest         one-shot report to stdout
  *   npm run monitor:digest -- --alert  exit 1 if any critical threshold trips
+ *   npm run monitor:digest -- --test   send a test message through the live
+ *                                      Telegram path and exit (no digest run)
  *
  * WHAT THIS IS. A human-readable snapshot of every money-surface signal worth
  * watching: chip conservation, no-double-credit, unexplained credits,
@@ -39,6 +41,52 @@ const jsonMode = process.argv.includes('--json');
 // 1 and print to stderr — delivery is best-effort, detection is not.
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN || '';
 const telegramChatId = process.env.TELEGRAM_CHAT_ID || '';
+
+/**
+ * The one send path. The alert branch and --test both call this, so a test
+ * message proves the exact code the cron fires — not a lookalike curl.
+ * Returns {ok, reason} instead of throwing: the CALLER decides whether a
+ * failed send is fatal (test mode: yes, its whole job is delivery) or
+ * best-effort (alert mode: the exit code and stderr already carry the alert).
+ */
+async function sendTelegram(text) {
+  if (!telegramToken || !telegramChatId) {
+    return { ok: false, reason: 'TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set' };
+  }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: telegramChatId,
+        text: text.slice(0, 4000),
+        disable_web_page_preview: true,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      return { ok: false, reason: `HTTP ${res.status} ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// --test: send a fixed message through the live delivery path and exit on the
+// result. No digest, no database, no condition tripped and nothing to revert —
+// this exists precisely so plumbing can be proven WITHOUT corrupting a money
+// row to fake a RED (the ledger guards would rightly make that ugly). Unlike
+// alert mode, a failed send here exits 1: delivery IS the thing under test.
+if (process.argv.includes('--test')) {
+  const r = await sendTelegram('EvenShock alert test — plumbing verified');
+  if (r.ok) {
+    console.log('test alert sent through the live delivery path — check Telegram');
+    process.exit(0);
+  }
+  console.error(`test alert NOT delivered: ${r.reason}`);
+  process.exit(1);
+}
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -252,31 +300,13 @@ if (alerts.length > 0) {
   for (const a of alerts) console.log(`  ${RED}✖${RESET} ${a}`);
   const summary = `ALERT ${new Date(digest.as_of).toISOString()} ${alerts.join(' | ')}`;
   console.error(summary);
-  if (telegramToken && telegramChatId) {
-    // Telegram Bot API sendMessage: 4096-char text limit, JSON body, and —
-    // unlike a webhook — errors arrive as {ok: false, description} with an
-    // HTTP status, so a bad token or wrong chat_id is diagnosable from the
-    // run log instead of vanishing.
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: telegramChatId,
-          text: `🚨 EvenShock money alert\n${summary}`.slice(0, 4000),
-          disable_web_page_preview: true,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        console.error(`telegram send failed: HTTP ${res.status} ${body.slice(0, 200)}`);
-      }
-    } catch (err) {
-      // A messenger that is down MUST NOT hide the alert. The exit code and
-      // the stderr summary remain the primary channel; the push is
-      // best-effort notification.
-      console.error(`telegram send error: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  // A messenger that is down MUST NOT hide the alert. The exit code and the
+  // stderr summary remain the primary channel; the push is best-effort
+  // notification — hence the logged-not-fatal failure here, the opposite of
+  // --test mode's contract.
+  {
+    const r = await sendTelegram(`🚨 EvenShock money alert\n${summary}`);
+    if (!r.ok) console.error(`telegram send failed: ${r.reason}`);
   }
   process.exit(alertMode ? 1 : 0);
 }
