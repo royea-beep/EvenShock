@@ -29,7 +29,7 @@ network; stake tables are flag-off at three independent database gates.
 
 | Invariant | Enforced where | Proven by | Status |
 |---|---|---|---|
-| minted = players + house | `ledger` + `house_ledger` | live: 1222 = 1221 + 1 | **done** |
+| minted = players + house | `ledger` + `house_ledger`; watched in `health_digest.money` (chips only, stated currency) with per-table conservation breaches beside it | live: 1622 = 1621 + 1, gap 0, breaches 0 | **done** |
 | No negative balance | `credit_ledger` seed-then-update | live: 0 rows below zero | **done** |
 | Identity is a verified signature, never a request field | JWT verified against JWKS, ES256 pinned | `play/index.ts` auth block | **done** |
 | No client write grant on money tables | grants: SELECT only, RLS on | live grant sweep | **done** |
@@ -88,7 +88,8 @@ network; stake tables are flag-off at three independent database gates.
    the identity verified to close in the same transaction, and the
    `settlement_anomaly` record marked repaired. Live after: stake rows sum −1
    against house +1, identity gap 0, zero balance drift.
-9. **Ledger durability is partially enforced.** The BEFORE DELETE guard is
+9. ~~Ledger durability is unenforced~~ **Enforced, in four parts
+   (2026-08-13).** The BEFORE DELETE guard is
    live (20260813130000): every row on `ledger` and `house_ledger` refuses
    deletion — service role included — unless a transaction-local
    `evenshock.ledger_delete_authorization` names a reason, and authorized
@@ -108,6 +109,10 @@ network; stake tables are flag-off at three independent database gates.
    design; the payment suite rotates to a fresh keypair instead), user2 reset
    cleanly with audit. Both reset scripts now call the RPC and tell the
    operator to rotate identities on refusal, never to force the wipe.
+   And the identity is watched, not assumed: `health_digest.money`
+   (20260813160000) reports minted/players/house, the gap, and per-table
+   conservation breaches on every owner digest — the 0dca3e39 gap sat
+   unnoticed for a day precisely because nothing computed it.
 10. **`tos_acceptances.user_id` is still ON DELETE CASCADE.** Deleting an
    account destroys the evidence of what that person agreed to — the same
    disease as gap 9 had, legal rather than financial. Found during the FK
