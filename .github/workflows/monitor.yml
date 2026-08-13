@@ -1,14 +1,16 @@
 name: monitor
 
 # Fires the owner money digest every 15 minutes. On any RED condition, exit
-# 1 sets the run to failed AND POSTs a short summary to MONITOR_WEBHOOK_URL
-# (e.g. a Discord channel webhook). Cost: ~35,000 runs/year, each < 30
-# seconds — well inside GitHub Actions' free-tier 2,000-min/mo budget.
+# 1 sets the run to failed AND pushes a short summary to Telegram via the
+# Bot API. Cost: ~35,000 runs/year, each < 30 seconds — well inside GitHub
+# Actions' free-tier 2,000-min/mo budget.
 #
 # Setup:
 #   1. Repo Settings -> Secrets and variables -> Actions
 #   2. Add secrets: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
-#      MONITOR_WEBHOOK_URL (the Discord/ntfy/etc URL from your provider)
+#      TELEGRAM_BOT_TOKEN (from @BotFather), TELEGRAM_CHAT_ID (your own chat
+#      with the bot — see docs/monitoring-alert-channels.md for the exact
+#      one-time steps)
 #   3. This workflow reads them into the script's env and never writes them to
 #      files, logs, or job outputs.
 
@@ -38,8 +40,10 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # The digest posts an alert summary to this URL when a RED
-          # condition trips. If unset, alerts still exit 1 (visible in the
-          # Actions runs list) but no push notification is sent.
-          MONITOR_WEBHOOK_URL: ${{ secrets.MONITOR_WEBHOOK_URL }}
+          # The digest pushes an alert summary to this Telegram chat when a
+          # RED condition trips. If either is unset, alerts still exit 1
+          # (visible in the Actions runs list) but no push is sent —
+          # delivery is best-effort, detection is not.
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: npm run --silent monitor:digest -- --alert

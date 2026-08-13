@@ -12,8 +12,10 @@
  *
  * WHY A CLI. Two reasons: (1) inspecting production without a browser or a
  * dashboard, and (2) piping into cron for the "reachable when something
- * breaks" story. In --alert mode the exit code is what a cron acts on, and
- * the STDERR emits a one-line summary suitable for feeding a webhook.
+ * breaks" story. In --alert mode the exit code is what a cron acts on, the
+ * STDERR emits a one-line summary, and a RED condition is pushed to Telegram
+ * (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID in env) — the owner's actual
+ * day-to-day channel, because an alert channel nobody checks is worth zero.
  *
  * AUTH. Uses SERVICE_ROLE to call the RPC directly, so this script does not
  * need a signed-in owner session. The same digest is also reachable through
@@ -31,11 +33,12 @@ if (!SERVICE_ROLE_KEY) {
 
 const alertMode = process.argv.includes('--alert');
 const jsonMode = process.argv.includes('--json');
-// Webhook URL for alert delivery. Prefer --webhook=<url>, fall back to the
-// MONITOR_WEBHOOK_URL env var so a GitHub Actions secret can supply it
-// without the URL appearing in the workflow file or the process argv.
-const webhookArg = process.argv.find((a) => a.startsWith('--webhook='));
-const webhookUrl = (webhookArg ? webhookArg.split('=')[1] : '') || process.env.MONITOR_WEBHOOK_URL || '';
+// Alert delivery is the Telegram Bot API: both values come from env (GitHub
+// Actions secrets in CI, .env.local locally) so neither ever appears in the
+// workflow file or the process argv. If either is missing, alerts still exit
+// 1 and print to stderr — delivery is best-effort, detection is not.
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN || '';
+const telegramChatId = process.env.TELEGRAM_CHAT_ID || '';
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -249,24 +252,30 @@ if (alerts.length > 0) {
   for (const a of alerts) console.log(`  ${RED}✖${RESET} ${a}`);
   const summary = `ALERT ${new Date(digest.as_of).toISOString()} ${alerts.join(' | ')}`;
   console.error(summary);
-  if (webhookUrl) {
-    // Discord webhooks accept {content: "..."} with a 2000-char limit; ntfy
-    // accepts a raw body. This payload works for both because Discord's JSON
-    // shape is the strict one — a ntfy server ignores the wrapper keys and
-    // just posts the raw body when we swap payloads if we ever add a
-    // provider flag. For now, one shape.
+  if (telegramToken && telegramChatId) {
+    // Telegram Bot API sendMessage: 4096-char text limit, JSON body, and —
+    // unlike a webhook — errors arrive as {ok: false, description} with an
+    // HTTP status, so a bad token or wrong chat_id is diagnosable from the
+    // run log instead of vanishing.
     try {
-      const res = await fetch(webhookUrl, {
+      const res = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: `EvenShock money alert: ${summary}`.slice(0, 1900) }),
+        body: JSON.stringify({
+          chat_id: telegramChatId,
+          text: `🚨 EvenShock money alert\n${summary}`.slice(0, 4000),
+          disable_web_page_preview: true,
+        }),
       });
-      if (!res.ok) console.error(`webhook post failed: HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error(`telegram send failed: HTTP ${res.status} ${body.slice(0, 200)}`);
+      }
     } catch (err) {
-      // A webhook that is down MUST NOT hide the alert. The exit code and
-      // the stderr summary remain the primary channel; the webhook is
+      // A messenger that is down MUST NOT hide the alert. The exit code and
+      // the stderr summary remain the primary channel; the push is
       // best-effort notification.
-      console.error(`webhook post error: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`telegram send error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   process.exit(alertMode ? 1 : 0);
