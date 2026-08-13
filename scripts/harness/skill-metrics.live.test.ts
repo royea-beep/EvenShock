@@ -156,6 +156,90 @@ describe('read rate', () => {
   });
 });
 
+type Rating = { rating: number; rd: number; volatility: number; games: number };
+
+async function glicko(
+  rating: number,
+  rd: number,
+  volatility: number,
+  opponents: { rating: number; rd: number; score: number }[],
+): Promise<Rating> {
+  const { data, error } = await db.rpc('glicko2_update', {
+    p_rating: rating,
+    p_rd: rd,
+    p_volatility: volatility,
+    p_opponents: opponents,
+  });
+  if (error) throw new Error(`glicko2_update: ${error.message}`);
+  const r = data as Record<string, string | number>;
+  return {
+    rating: Number(r.rating),
+    rd: Number(r.rd),
+    volatility: Number(r.volatility),
+    games: Number(r.games),
+  };
+}
+
+/** Ratings are stored 1500-centred; the paper states its answer on its own scale. */
+const GLICKO2_SCALE = 173.7178;
+const toMu = (rating: number) => (rating - 1500) / GLICKO2_SCALE;
+const toPhi = (rd: number) => rd / GLICKO2_SCALE;
+
+describe('glicko-2', () => {
+  it("reproduces the worked example from Glickman's paper", async () => {
+    const after = await glicko(1500, 200, 0.06, [
+      { rating: 1400, rd: 30, score: 1 },
+      { rating: 1550, rd: 100, score: 0 },
+      { rating: 1700, rd: 300, score: 0 },
+    ]);
+
+    // ASSERTED ON THE PAPER'S OWN SCALE AND ITS OWN PRECISION, deliberately.
+    // The paper prints r' = 1464.06, and this returns 1464.0507 — the gap is
+    // Glickman rounding intermediates to 4 decimals (mu' = -0.2069 for an
+    // actual -0.206941) and then scaling that rounded figure back up by
+    // 173.7178. Asserting 1464.06 would be pinning our implementation to
+    // someone else's rounding error; asserting mu' and phi' at 4 decimals
+    // compares like with like.
+    expect(toMu(after.rating)).toBeCloseTo(-0.2069, 4);
+    expect(toPhi(after.rd)).toBeCloseTo(0.8722, 4);
+    expect(after.volatility).toBeCloseTo(0.05999, 5);
+    expect(after.games).toBe(3);
+  });
+
+  it('widens RD for a player who did not compete', async () => {
+    // The whole reason for preferring Glicko-2 over Elo. Absence is not
+    // evidence, so the rating holds still while confidence in it decays, and
+    // the returning player's first result moves them properly.
+    const after = await glicko(1500, 200, 0.06, []);
+    expect(after.rating).toBe(1500);
+    expect(after.rd).toBeGreaterThan(200);
+    expect(after.games).toBe(0);
+  });
+
+  it("does not let a dormant account's RD run away", async () => {
+    // Uncapped, RD grows without bound while someone is away and their return
+    // swings the whole ladder. 350 is "we know nothing", and there is nothing
+    // past it.
+    expect((await glicko(1500, 350, 0.06, [])).rd).toBe(350);
+  });
+
+  it('moves an unrated player a long way on their first results', async () => {
+    const after = await glicko(1500, 350, 0.06, [
+      { rating: 1500, rd: 50, score: 1 },
+      { rating: 1500, rd: 50, score: 1 },
+      { rating: 1500, rd: 50, score: 1 },
+    ]);
+    expect(after.rating).toBeGreaterThan(1700);
+    expect(after.rd).toBeLessThan(200);
+  });
+
+  it('learns nothing from a draw between identical players', async () => {
+    const after = await glicko(1500, 200, 0.06, [{ rating: 1500, rd: 200, score: 0.5 }]);
+    expect(after.rating).toBeCloseTo(1500, 6);
+    expect(after.rd).toBeLessThan(200);
+  });
+});
+
 describe('grants', () => {
   it('does not let a client recompute anyone from their rounds', async () => {
     // The aggregators read every player's rounds to build one player's metrics.
