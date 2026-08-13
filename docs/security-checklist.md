@@ -80,17 +80,20 @@ network; stake tables are flag-off at three independent database gates.
    a signature with no payments row, which requires manual deletion). Both get
    `credit_ledger_strict` with their own tests, not in the same change as the
    settlement fix.
-8. **The system identity is currently off by exactly 9 chips**, from the
-   0dca3e39 incident: a harness reset destroyed a settled match's payout and
-   one stake post. The full record is in `integrity_events`
-   (`settlement_anomaly`) and the sweep migration. Repair — re-inserting the
-   two destroyed rows — awaits the owner's explicit authorisation; ledger data
-   is not edited on anyone else's initiative.
+8. ~~The system identity is off by exactly 9 chips~~ **Repaired,
+   owner-authorized, 2026-08-13** (migration
+   `20260813120000_repair_0dca3e39_destroyed_rows`): the two destroyed rows
+   were re-inserted under their original idem keys via `credit_ledger_strict`,
+   the identity verified to close in the same transaction, and the
+   `settlement_anomaly` record marked repaired. Live after: stake rows sum −1
+   against house +1, identity gap 0, zero balance drift.
 9. **Ledger durability is unenforced.** Harness resets can delete settled
    money rows (the actual cause of 0dca3e39), and `ledger.user_id` is
    `ON DELETE CASCADE`, so account deletion destroys financial history. The
    fixes — a BEFORE DELETE guard on `ledger`, FK to RESTRICT with
    anonymisation, an `is_harness` marker — are designed and not yet built.
+   Note for the guard design: the repaired rows carry `mp_table_id null`
+   (their table was swept), so the guard must not key on `mp_table_id` alone.
 
 ## Not applicable
 
