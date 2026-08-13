@@ -133,5 +133,13 @@ exits 1 and the summary is still on stderr in the Actions log.
    response should say `"ok":true`.
 6. **Then verify the workflow end-to-end**: `Actions → monitor → Run
    workflow` should exit 0 today (no red conditions) and post nothing.
-   To see a real alert fire, deliberately trip one red condition and
-   re-run — the run fails and the Telegram message arrives.
+7. **To see a message actually land through the live code path**, run the
+   workflow manually with the **test_alert** checkbox ticked (or locally:
+   `npm run monitor:digest -- --test`). It skips the digest and sends
+   "EvenShock alert test — plumbing verified" through the same
+   `sendTelegram()` the alert branch calls — no condition tripped, nothing
+   to revert. In test mode a failed send fails the run, because delivery
+   is the thing under test; in alert mode a failed send never masks the
+   alert (exit 1 + stderr stay authoritative). Do NOT prove plumbing by
+   corrupting a money row to fake a RED — the ledger guards exist to make
+   exactly that ugly.

@@ -18,6 +18,11 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
+    inputs:
+      test_alert:
+        description: 'Send a test message through the live Telegram delivery path (no digest run)'
+        type: boolean
+        default: false
 
 jobs:
   digest:
@@ -46,4 +51,9 @@ jobs:
           # delivery is best-effort, detection is not.
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: npm run --silent monitor:digest -- --alert
+        # test_alert (manual runs only; schedule never sets it) swaps --alert
+        # for --test: the digest is skipped and a fixed test message is sent
+        # through the SAME sendTelegram() the alert branch uses — a plumbing
+        # proof that trips no condition and leaves nothing to revert. In test
+        # mode a failed send fails the run; in alert mode it never does.
+        run: npm run --silent monitor:digest -- ${{ inputs.test_alert && '--test' || '--alert' }}
