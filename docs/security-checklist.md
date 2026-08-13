@@ -19,7 +19,8 @@ network; stake tables are flag-off at three independent database gates.
 | Purchase | No purchase from a blocked or unknown jurisdiction | `create_payment_intent` → `geo_allows_money` | live: GB issues, IL refused, datacenter refused, no verdict refused | **done** |
 | Purchase | No purchase without recorded 18+ / no-cash-value acceptance | `create_payment_intent`, `context='purchase'` | live: `tos_required` then `ISSUED` | **done** |
 | Stake escrow | Both stakes posted atomically with seating | `mp_escrow` inside `mp_join_table` | phase-3 suite | **done** (path disabled) |
-| Stake settle | pot in = payout + rake, exactly, every path | `mp_settle`, `mp_conservation_check` | live settled match: posted 20, paid 19, rake 1, net 0 | **done** (path disabled) |
+| Stake settle | pot in = payout + rake, exactly, every path | `mp_settle`, `mp_conservation_check` | live settled match 20/19/1/0 | **done** (path disabled) |
+| Stake settle | All-or-nothing IN EFFECT: a payout that fails to land aborts the rake and the settlement | `credit_ledger_strict` in `mp_settle`/`mp_escrow` (20260813090000) | live sabotage test: forced payout no-op raised, rake 0, table unsettled, clean retry conserved | **done** |
 | Refund | Void refunds exactly what was posted, never more | ledger-driven refund in `mp_settle` | unjoined-table case | **done** (path disabled) |
 | Rake | Whole chips only | `mp_stake_rake_must_be_whole` CHECK | stake-25 refused | **done** (path disabled) |
 | Stakes | Unreachable while flag is off | 3 DB gates + client flag | service-role attack: all refused | **done** |
@@ -71,6 +72,25 @@ network; stake tables are flag-off at three independent database gates.
 6. **The stake e2e harness has never run.** Written, unrunnable from the build
    environment (no egress). The RPC layer is proven by a live settled match; the
    deployed-function layer is not.
+7. **Two silent-no-op call sites remain**, audited and deferred:
+   `resolve_round`'s match rewards use `perform credit_ledger` (a skip
+   shortchanges a player but cannot break minted = players + house, since an
+   unminted reward subtracts from both sides), and `credit_purchase` captures
+   the return without checking null (reachable only if a ledger row exists for
+   a signature with no payments row, which requires manual deletion). Both get
+   `credit_ledger_strict` with their own tests, not in the same change as the
+   settlement fix.
+8. **The system identity is currently off by exactly 9 chips**, from the
+   0dca3e39 incident: a harness reset destroyed a settled match's payout and
+   one stake post. The full record is in `integrity_events`
+   (`settlement_anomaly`) and the sweep migration. Repair — re-inserting the
+   two destroyed rows — awaits the owner's explicit authorisation; ledger data
+   is not edited on anyone else's initiative.
+9. **Ledger durability is unenforced.** Harness resets can delete settled
+   money rows (the actual cause of 0dca3e39), and `ledger.user_id` is
+   `ON DELETE CASCADE`, so account deletion destroys financial history. The
+   fixes — a BEFORE DELETE guard on `ledger`, FK to RESTRICT with
+   anonymisation, an `is_harness` marker — are designed and not yet built.
 
 ## Not applicable
 
