@@ -89,23 +89,49 @@ Any topic name is a "channel"; subscribe from the phone app.
 
 ## Wiring — what actually shipped
 
-The generic wiring is now in `.github/workflows/monitor.yml`. It runs the
-digest every 15 minutes and POSTs the alert summary to
-`secrets.MONITOR_WEBHOOK_URL` when a RED condition trips. The webhook is
-provider-agnostic (JSON `{content: "..."}` shape works for Discord; ntfy
-ignores the wrapper keys and posts the body).
+**Telegram**, superseding the Discord recommendation above for one decisive
+reason: it is where the owner actually lives day-to-day, and an alert
+channel nobody checks is worth zero. The comparison table stands for anyone
+choosing differently.
 
-To make it live, add four repo secrets (`Settings → Secrets and variables →
-Actions`):
+`.github/workflows/monitor.yml` runs the digest every 15 minutes. The alert
+logic is unchanged — only RED conditions fire — and on RED the digest
+pushes the one-line summary to a Telegram chat via the Bot API
+(`https://api.telegram.org/bot<token>/sendMessage`). Delivery is
+best-effort: if Telegram is down or the secrets are unset, the run still
+exits 1 and the summary is still on stderr in the Actions log.
 
-  - `SUPABASE_URL`               (the project URL, no trailing slash)
-  - `SUPABASE_ANON_KEY`          (public anon key)
-  - `SUPABASE_SERVICE_ROLE_KEY`  (service role — required for the digest RPC)
-  - `MONITOR_WEBHOOK_URL`        (the Discord/ntfy/etc URL from your provider)
+### One-time Telegram setup
 
-The workflow reads them into env for one process and never writes them to
-files, logs, or job outputs. Test it end-to-end with a manual run
-(`Actions → monitor → Run workflow`) once — the run should exit 0 (no red
-conditions today) and no message should be posted. Then deliberately trip
-one red condition (e.g., insert a ledger row with a delta that breaks
-conservation) and re-run to confirm the webhook posts and the run fails.
+1. **Create the bot.** Open <https://t.me/BotFather>, send `/newbot`,
+   give it a display name and a username ending in `bot`. BotFather
+   replies with the **token** (`123456789:AAF...`). That token is the
+   secret — treat it like a password.
+2. **Open a chat with your new bot** (BotFather's reply links it) and
+   send it any message, e.g. `hi`. Bots cannot message you first; this
+   one message is what authorizes it to push to you.
+3. **Get your chat_id.** Visit
+   `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in a browser and
+   read `result[0].message.chat.id` from the JSON — a number like
+   `123456789`. (If `result` is empty, send the bot another message and
+   reload.)
+4. **Add the repo secrets** at
+   <https://github.com/royea-beep/EvenShock/settings/secrets/actions>:
+   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, alongside the existing
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+   `MONITOR_WEBHOOK_URL` is no longer read and can be deleted.
+5. **Verify delivery independently of the monitor** (so a quiet monitor
+   proves "no alerts", not "broken plumbing"):
+
+   ```bash
+   curl -s "https://api.telegram.org/bot<YOUR_TOKEN>/sendMessage" \
+     -H 'Content-Type: application/json' \
+     -d '{"chat_id": <YOUR_CHAT_ID>, "text": "EvenShock alert plumbing test"}'
+   ```
+
+   The message should appear in Telegram within a second, and the JSON
+   response should say `"ok":true`.
+6. **Then verify the workflow end-to-end**: `Actions → monitor → Run
+   workflow` should exit 0 today (no red conditions) and post nothing.
+   To see a real alert fire, deliberately trip one red condition and
+   re-run — the run fails and the Telegram message arrives.

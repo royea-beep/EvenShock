@@ -61,14 +61,18 @@ let admin: SupabaseClient;
 let rounds: RoundsApi;
 let userId: string;
 
-/** Everything this player has ever done, gone. Keeps the totals below exact. */
+/**
+ * Everything this player has ever done, gone — through harness_reset_user(),
+ * the one sanctioned door. Bare table deletes are refused by the database now
+ * (a reset exactly like the old one here destroyed a settled stake match's
+ * rows — the 0dca3e39 incident). The RPC refuses users not marked is_harness
+ * and users entangled with another player's history; if it ever refuses this
+ * one, change PLAYER_SEED for a fresh identity rather than forcing the wipe.
+ */
 async function reset(id: string) {
-  await admin.from('ledger').delete().eq('user_id', id).throwOnError();
-  await admin.from('rounds').delete().eq('user_id', id).throwOnError();
-  await admin.from('matches').delete().eq('user_id', id).throwOnError();
-  await admin.from('balances').delete().eq('user_id', id).throwOnError();
-  await admin.from('inventory').delete().eq('user_id', id).throwOnError();
-  await admin.from('integrity_events').delete().eq('user_id', id).throwOnError();
+  await admin.from('profiles').update({ is_harness: true }).eq('id', id).throwOnError();
+  const { error } = await admin.rpc('harness_reset_user', { p_user_id: id });
+  if (error) throw new Error(`harness_reset_user refused: ${error.message}`);
 }
 
 beforeAll(async () => {
