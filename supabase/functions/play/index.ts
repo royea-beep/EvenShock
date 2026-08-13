@@ -321,11 +321,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'accept_tos':
       return await acceptTos(db, userId, body);
     case 'create_intent':
-      return await createIntent(db, userId, body);
+      return CHAIN ? await createIntent(CHAIN, db, userId, body) : CHAIN_UNCONFIGURED();
     case 'confirm_payment':
-      return await confirmPayment(db, userId, body);
+      return CHAIN ? await confirmPayment(CHAIN, db, userId, body) : CHAIN_UNCONFIGURED();
     case 'reconcile':
-      return await reconcile(db, userId);
+      return CHAIN ? await reconcile(CHAIN, db, userId) : CHAIN_UNCONFIGURED();
+    case 'geo':
+      return await geo(req, db, userId);
+    case 'owner_digest':
+      return await ownerDigest(db, userId);
     default:
       return fail('bad_request', `Unknown action: ${String(body.action)}`, 400);
   }
@@ -520,6 +524,65 @@ async function buy(db: SupabaseClient, userId: string, body: Record<string, unkn
  * returns `forbidden` otherwise, so this endpoint tells an ordinary player
  * nothing at all about how the system is doing.
  */
+// ------------------------------------------------------------------- geo
+//
+// The caller's country, resolved from the REAL request IP — read from the
+// x-forwarded-for header the platform sets, not from anything the client could
+// forge in the request body. Same source `clientIp` uses for the failure
+// limiter, so the two agree by construction.
+//
+// PERSISTS the verdict to `geo_verdicts` via `geo_record_verdict`, because the
+// money gate `geo_allows_money` (called inside `create_payment_intent`) reads
+// from that table. A client that hits `create_intent` without ever having
+// resolved geo would get `geo_unknown` — so the client is expected to call
+// this action once on entry, before any money action.
+//
+// ipwho.is is free and unauthenticated; a bad answer here is "unknown", never
+// a crash — but the persisted verdict for an unknown lookup is NOT written, so
+// the money gate stays fail-closed rather than accidentally allowing everyone.
+async function geo(req: Request, db: SupabaseClient, userId: string): Promise<Response> {
+  const ip = clientIp(req);
+  if (ip === 'unknown' || ip === '127.0.0.1' || ip.startsWith('::')) {
+    return json({ ip, country_code: null, country: null, source: 'local' });
+  }
+  let doc: any = null;
+  try {
+    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?fields=success,country,country_code,region,city,connection`);
+    doc = await res.json();
+  } catch (err) {
+    return json({ ip, country_code: null, country: null, source: 'ipwho.is', error: err instanceof Error ? err.message : 'lookup_error' });
+  }
+  if (!doc?.success) {
+    return json({ ip, country_code: null, country: null, source: 'ipwho.is', error: doc?.message ?? 'lookup_failed' });
+  }
+  const country_code = typeof doc.country_code === 'string' ? doc.country_code : null;
+  // ipwho.is exposes `connection.type` — 'hosting' means a datacenter IP,
+  // which is the signal `geo_allows_money` uses to refuse money from VPN exit
+  // nodes and cloud providers.
+  const is_datacenter = doc?.connection?.type === 'hosting';
+
+  if (country_code) {
+    // Best-effort persist. A failure here must not break the caller — the next
+    // money action will refuse with `geo_unknown` and the client will retry.
+    await db.rpc('geo_record_verdict', {
+      p_user_id: userId,
+      p_country: country_code,
+      p_source: 'ipwho.is',
+      p_is_datacenter: is_datacenter,
+    });
+  }
+
+  return json({
+    ip,
+    country_code,
+    country: typeof doc.country === 'string' ? doc.country : null,
+    region: typeof doc.region === 'string' ? doc.region : null,
+    city: typeof doc.city === 'string' ? doc.city : null,
+    is_datacenter,
+    source: 'ipwho.is',
+  });
+}
+
 async function health(db: SupabaseClient, userId: string) {
   const { data, error } = await db.rpc('health_digest', { p_user_id: userId });
   if (error) return fail('db_error', error.message, 500);
@@ -530,18 +593,62 @@ async function health(db: SupabaseClient, userId: string) {
   return json(data);
 }
 
+/**
+ * Owner-only money-anomaly snapshot. Delegates to `owner_money_digest`, which
+ * is where the actual gating and the anomaly rollup live — this handler is
+ * just the HTTPS wrapper. Any non-owner caller receives `{"error":"forbidden"}`
+ * from the RPC itself, so the check is not duplicated at this layer.
+ */
+async function ownerDigest(db: SupabaseClient, userId: string) {
+  const { data, error } = await db.rpc('owner_money_digest', { p_user_id: userId });
+  if (error) return fail('db_error', error.message, 500);
+  const refused = rpcError(data);
+  if (refused) return refused;
+  return json(data);
+}
+
 // ===================================================================== chain
 //
 // USDC purchases. The one rule: we never trust the client's claim that it paid.
 // The client reports a signature and nothing more; everything that decides
 // whether chips are credited is read from the chain here.
 
-const SOLANA_RPC_URL = Deno.env.get('SOLANA_RPC_URL') ?? '';
-const SOLANA_CLUSTER = Deno.env.get('SOLANA_CLUSTER') ?? '';
+// One named config, not four scattered env reads. A deploy that sets three of
+// the four — a common way to accidentally point a mainnet-scoped server at a
+// devnet RPC — collapses `CHAIN` to null, and every payment endpoint refuses
+// at the door. The type is only handed to functions that need it, so
+// "forgot the gate" is a TypeScript error rather than a production incident.
+//
+// Treasury and mint are pinned in env AS WELL as frozen on the intent. The DB
+// supplies values to new intents; the env cross-check catches the case where a
+// leaked service-role key rewrites payment_config to a treasury the attacker
+// controls — the edge function would still refuse to credit a payment that
+// went to any address other than the one this deploy was built with.
+interface ChainConfig {
+  readonly rpcUrl: string;
+  readonly cluster: 'devnet' | 'mainnet-beta';
+  readonly treasury: string;
+  readonly usdcMint: string;
+}
+
+function readChainConfig(): ChainConfig | null {
+  const rpcUrl = Deno.env.get('SOLANA_RPC_URL') ?? '';
+  const cluster = Deno.env.get('SOLANA_CLUSTER') ?? '';
+  const treasury = Deno.env.get('SOLANA_TREASURY') ?? '';
+  const usdcMint = Deno.env.get('SOLANA_USDC_MINT') ?? '';
+  if (!rpcUrl || !cluster || !treasury || !usdcMint) return null;
+  if (cluster !== 'devnet' && cluster !== 'mainnet-beta') return null;
+  return { rpcUrl, cluster, treasury, usdcMint };
+}
+
+const CHAIN: ChainConfig | null = readChainConfig();
 const TOS_VERSION = 'v1';
 
-async function rpc(method: string, params: unknown[]): Promise<any> {
-  const res = await fetch(SOLANA_RPC_URL, {
+const CHAIN_UNCONFIGURED = () =>
+  fail('payments_unconfigured', 'Chain config missing or partial', 503);
+
+async function rpc(chain: ChainConfig, method: string, params: unknown[]): Promise<any> {
+  const res = await fetch(chain.rpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
@@ -620,8 +727,8 @@ type ChainResult =
  *   identically, and it is measured in raw base units as BigInt so no float
  *   ever touches a monetary value.
  */
-async function verifyOnChain(intent: IntentRow, signature: string): Promise<ChainResult> {
-  const tx = await rpc('getTransaction', [
+async function verifyOnChain(chain: ChainConfig, intent: IntentRow, signature: string): Promise<ChainResult> {
+  const tx = await rpc(chain, 'getTransaction', [
     signature,
     { commitment: 'confirmed', maxSupportedTransactionVersion: 0, encoding: 'jsonParsed' },
   ]);
@@ -659,6 +766,7 @@ async function verifyOnChain(intent: IntentRow, signature: string): Promise<Chai
 
 /** Loads an intent the caller owns, and refuses a cluster mismatch outright. */
 async function loadIntent(
+  chain: ChainConfig,
   db: SupabaseClient,
   userId: string,
   intentId: unknown,
@@ -679,12 +787,21 @@ async function loadIntent(
   // Fail closed. Verifying a mainnet intent against a devnet RPC — or the
   // reverse — is the worst mistake available here, so it is refused rather
   // than noticed later on a dashboard.
-  if (!SOLANA_RPC_URL || !SOLANA_CLUSTER) {
-    return { refusal: fail('payments_unconfigured', 'No RPC configured', 503) };
-  }
-  if (data.cluster !== SOLANA_CLUSTER) {
+  if (data.cluster !== chain.cluster) {
     return {
-      refusal: fail('cluster_mismatch', `Intent is ${data.cluster}, server is ${SOLANA_CLUSTER}`, 409),
+      refusal: fail('cluster_mismatch', `Intent is ${data.cluster}, server is ${chain.cluster}`, 409),
+    };
+  }
+  // Env-pinned treasury/mint cross-check. If the DB was rewritten to point at
+  // an attacker treasury, the intent that quotes it will still be refused here.
+  if (data.treasury_address !== chain.treasury) {
+    return {
+      refusal: fail('payment_mismatch', 'intent_treasury_not_pinned', 409),
+    };
+  }
+  if (data.usdc_mint !== chain.usdcMint) {
+    return {
+      refusal: fail('payment_mismatch', 'intent_mint_not_pinned', 409),
     };
   }
   return { intent: data as IntentRow };
@@ -703,9 +820,7 @@ async function acceptTos(db: SupabaseClient, userId: string, body: Record<string
   return refused ?? json(data);
 }
 
-async function createIntent(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
-  if (!SOLANA_CLUSTER) return fail('payments_unconfigured', 'No cluster configured', 503);
-
+async function createIntent(chain: ChainConfig, db: SupabaseClient, userId: string, body: Record<string, unknown>) {
   // The reference is generated HERE, never accepted from the client: a client
   // that chose its own could reuse one and bind someone else's payment.
   const bytes = new Uint8Array(32);
@@ -713,7 +828,7 @@ async function createIntent(db: SupabaseClient, userId: string, body: Record<str
 
   const { data, error } = await db.rpc('create_payment_intent', {
     p_user_id: userId,
-    p_cluster: SOLANA_CLUSTER,
+    p_cluster: chain.cluster,
     p_reference: base58(bytes),
     p_expected_usdc: typeof body.usdc === 'number' && body.usdc > 0 ? body.usdc : 1,
     p_tos_version: typeof body.tos_version === 'string' ? body.tos_version : TOS_VERSION,
@@ -723,8 +838,22 @@ async function createIntent(db: SupabaseClient, userId: string, body: Record<str
   return refused ?? json(data);
 }
 
-async function confirmPayment(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
-  const { intent, refusal } = await loadIntent(db, userId, body.intent_id);
+async function confirmPayment(chain: ChainConfig, db: SupabaseClient, userId: string, body: Record<string, unknown>) {
+  // Rate limit BEFORE loadIntent + verifyOnChain, so a wallet retry loop
+  // cannot hammer the Solana RPC. Placement is deliberate: on limit exceeded
+  // we answer 'pending', NOT 429. The money may already be on chain, and the
+  // intent's reference lets `reconcile` credit it without the client ever
+  // succeeding here — so refusing loudly would risk stranding a paid intent.
+  // The client polls, the next window opens, and the very next attempt reads
+  // the same transaction that was already confirmed.
+  const { data: allowed, error: rlErr } = await db.rpc('take_rate_token', {
+    p_user_id: userId,
+    p_action: 'confirm_payment',
+  });
+  if (rlErr) return fail('db_error', rlErr.message, 500);
+  if (allowed === false) return json({ status: 'pending', reason: 'rate_limited' });
+
+  const { intent, refusal } = await loadIntent(chain, db, userId, body.intent_id);
   if (refusal) return refusal;
 
   const signature = body.signature;
@@ -734,7 +863,7 @@ async function confirmPayment(db: SupabaseClient, userId: string, body: Record<s
 
   let result: ChainResult;
   try {
-    result = await verifyOnChain(intent!, signature);
+    result = await verifyOnChain(chain, intent!, signature);
   } catch (err) {
     // An RPC that is down must not look like a rejected payment. The money may
     // well be on chain; this is our failure to read it, and reconciliation will
@@ -774,16 +903,13 @@ async function confirmPayment(db: SupabaseClient, userId: string, body: Record<s
  * Owner-triggered rather than scheduled, because nothing here is scheduled yet
  * and a cron that silently stops is worse than a button someone presses.
  */
-async function reconcile(db: SupabaseClient, userId: string) {
+async function reconcile(chain: ChainConfig, db: SupabaseClient, userId: string) {
   const { data: owner } = await db
     .from('profiles')
     .select('is_owner')
     .eq('id', userId)
     .maybeSingle();
   if (!owner?.is_owner) return fail('forbidden', 'Owner only', 403);
-  if (!SOLANA_RPC_URL || !SOLANA_CLUSTER) {
-    return fail('payments_unconfigured', 'No RPC configured', 503);
-  }
 
   const { data: intents, error } = await db.rpc('open_intents_for_reconcile', {
     p_max_age: '7 days',
@@ -792,11 +918,15 @@ async function reconcile(db: SupabaseClient, userId: string) {
 
   const scanned: unknown[] = [];
   for (const row of (intents ?? []) as any[]) {
-    if (row.cluster !== SOLANA_CLUSTER) continue;
+    if (row.cluster !== chain.cluster) continue;
+    // Same env-pinned cross-check as loadIntent: refuse to reconcile against a
+    // treasury/mint that does not match this deploy's pinned values.
+    if (row.treasury_address !== chain.treasury) continue;
+    if (row.usdc_mint !== chain.usdcMint) continue;
 
     let sigs: any[] = [];
     try {
-      sigs = (await rpc('getSignaturesForAddress', [row.reference, { limit: 10 }])) ?? [];
+      sigs = (await rpc(chain, 'getSignaturesForAddress', [row.reference, { limit: 10 }])) ?? [];
     } catch {
       continue; // a failed read is not a verdict; the next run tries again
     }
@@ -815,7 +945,7 @@ async function reconcile(db: SupabaseClient, userId: string) {
     };
 
     for (const s of sigs) {
-      const verdict = await verifyOnChain(intent, s.signature);
+      const verdict = await verifyOnChain(chain, intent, s.signature);
       if (verdict.kind !== 'ok') continue;
       const { data: credited } = await db.rpc('credit_purchase', {
         p_signature: s.signature,
@@ -831,5 +961,5 @@ async function reconcile(db: SupabaseClient, userId: string) {
     }
   }
 
-  return json({ ok: true, cluster: SOLANA_CLUSTER, credited: scanned });
+  return json({ ok: true, cluster: chain.cluster, credited: scanned });
 }

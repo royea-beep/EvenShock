@@ -34,11 +34,15 @@ interface EntryScreenProps {
   /** Closes without recording — only offered when the visitor reopened this
    *  themselves. A first visit has no dismiss: the choice is the point. */
   onDismiss?: () => void;
+  /** Shows a small "what this is" block above the two path cards. Only on
+   *  the very first visit — the flag is owned by useEntryChoice so the
+   *  once-per-browser rule is enforced in one place. */
+  showIntro?: boolean;
 }
 
 type Phase = { kind: 'idle' } | { kind: 'connecting' } | { kind: 'failed'; message: string };
 
-export function EntryScreen({ onConnect, onGuest, onWalletChosen, onDismiss }: EntryScreenProps) {
+export function EntryScreen({ onConnect, onGuest, onWalletChosen, onDismiss, showIntro }: EntryScreenProps) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
 
   // Escape closes only the reopened comparison. On a first visit there is
@@ -105,6 +109,17 @@ export function EntryScreen({ onConnect, onGuest, onWalletChosen, onDismiss }: E
           </h1>
           <p className="text-xs text-white/70 sm:text-base">{copy.entry.subtitle}</p>
         </div>
+
+        {showIntro && (
+          <section
+            aria-label={copy.entry.intro.headline}
+            className="mx-auto max-w-xl space-y-2 rounded-md bg-white/5 p-4 text-xs text-white/80 shadow-inner sm:text-sm"
+          >
+            <p className="text-white/95">{copy.entry.intro.gameLine}</p>
+            <p>{copy.entry.intro.walletLine}</p>
+            <p className="text-white/70">{copy.entry.intro.chipsLine}</p>
+          </section>
+        )}
 
         <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
           <PathCard

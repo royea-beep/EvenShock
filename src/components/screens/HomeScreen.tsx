@@ -27,6 +27,12 @@ interface HomeScreenProps {
    * there is no button to find with a screen inspector.
    */
   onPlayFriend?: () => void;
+  /**
+   * Opens the leaderboard panel. Absent for guests — the leaderboard RPC is
+   * granted to `authenticated` only, so the button is invisible to callers
+   * who could not use it anyway. Prop-absence enforcement, same pattern.
+   */
+  onOpenLeaderboard?: () => void;
 }
 
 export function HomeScreen({
@@ -39,6 +45,7 @@ export function HomeScreen({
   shop,
   chipsShop,
   onPlayFriend,
+  onOpenLeaderboard,
 }: HomeScreenProps) {
   return (
     <motion.div
@@ -167,6 +174,19 @@ export function HomeScreen({
           className="display-type -mt-4 min-h-11 cursor-pointer bg-elevated px-8 text-sm font-bold text-ink hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
         >
           {copy.versus.entry}
+        </button>
+      )}
+
+      {/* Leaderboard. Signed-in only — the RPC's grant list refuses guests, so
+          rendering a button they couldn't use would be a lie. Underlined text
+          rather than a filled pill: standing is worth checking, not shouting. */}
+      {onOpenLeaderboard && (
+        <button
+          type="button"
+          onClick={onOpenLeaderboard}
+          className="display-type -mt-2 min-h-11 cursor-pointer text-sm font-semibold text-muted underline decoration-dotted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+        >
+          {copy.home.leaderboardButton}
         </button>
       )}
     </motion.div>

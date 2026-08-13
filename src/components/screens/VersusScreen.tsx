@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { copy } from '../../constants/copy';
 import { ChoiceButton } from '../ChoiceButton';
@@ -8,6 +8,7 @@ import type { MatchFormat } from '../../types/game';
 import type { MultiplayerState } from '../../hooks/useMultiplayer';
 import type { RoundResult, Seat } from '../../data/multiplayer';
 import { STAKE_TABLES_ENABLED } from '../../constants/features';
+import { buildInviteUrl, readInviteCodeFromUrl } from '../../utils/share';
 
 /**
  * The friend match, on screen.
@@ -52,6 +53,16 @@ export function VersusScreen({
   const [stake, setStake] = useState(0);
   const [code, setCode] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Prefill from ?invite=CODE on first mount, once. Deliberately does NOT
+  // auto-join — a signed-out or partially-connected visitor tapping a share
+  // link should see the join screen with the code filled and press the
+  // button themselves. Auto-joining would race the wallet-connect flow and
+  // occasionally hand a "table_full" refusal to a legitimate invite.
+  useEffect(() => {
+    const invited = readInviteCodeFromUrl();
+    if (invited) setCode(invited);
+  }, []);
 
   const { phase } = mp;
 
@@ -200,8 +211,14 @@ export function VersusScreen({
             <button
               type="button"
               onClick={() => {
+                // Copy the full invite URL, not just the code — a recipient
+                // tapping the link lands on the join screen with the code
+                // pre-filled (see readInviteCodeFromUrl above). Falls back
+                // silently to nothing when navigator.clipboard is absent;
+                // the code itself is still visible above for manual copy.
+                const url = buildInviteUrl(phase.table.inviteCode ?? '');
                 void navigator.clipboard
-                  ?.writeText(phase.table.inviteCode ?? '')
+                  ?.writeText(url)
                   .then(() => setCopied(true))
                   .catch(() => setCopied(false));
               }}

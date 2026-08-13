@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AuthStatus } from './useAuth';
 import {
+  markIntroSeen,
   readEntryChoice,
+  readIntroSeen,
   shouldShowEntry,
   writeEntryChoice,
   type EntryChoice,
@@ -30,6 +32,11 @@ import {
 export interface EntryChoiceState {
   /** True when the entry screen should be on top of everything. */
   showEntry: boolean;
+  /** True the very first time this browser sees the entry screen. The intro
+   *  block above the two path cards renders on this flag. Suppressed forever
+   *  after either path is chosen — a returning visitor already knows what
+   *  the game is, and re-showing the pitch every reopen would be nagging. */
+  showIntro: boolean;
   choice: EntryChoice | null;
   /** Take the guest path and close the door. */
   chooseGuest: () => void;
@@ -47,6 +54,9 @@ export interface EntryChoiceState {
 export function useEntryChoice(status: AuthStatus): EntryChoiceState {
   const [choice, setChoice] = useState<EntryChoice | null>(() => readEntryChoice());
   const [reopened, setReopened] = useState(false);
+  // Sync init, same pattern as `choice`, so a returning visitor never sees
+  // the intro flash before it is suppressed.
+  const [introSeen, setIntroSeen] = useState<boolean>(() => readIntroSeen());
 
   // Rule 1. A session outranks whatever is (or isn't) in storage.
   useEffect(() => {
@@ -59,22 +69,37 @@ export function useEntryChoice(status: AuthStatus): EntryChoiceState {
     setReopened(false);
   }, [status]);
 
+  const noteIntroSeen = useCallback(() => {
+    if (introSeen) return;
+    markIntroSeen();
+    setIntroSeen(true);
+  }, [introSeen]);
+
   const chooseGuest = useCallback(() => {
     writeEntryChoice('guest');
     setChoice('guest');
     setReopened(false);
-  }, []);
+    noteIntroSeen();
+  }, [noteIntroSeen]);
 
   const chooseWallet = useCallback(() => {
     writeEntryChoice('wallet');
     setChoice('wallet');
-  }, []);
+    noteIntroSeen();
+  }, [noteIntroSeen]);
 
   const reopen = useCallback(() => setReopened(true), []);
   const dismiss = useCallback(() => setReopened(false), []);
 
+  const showEntry = shouldShowEntry({ status, choice, reopened });
+  // Intro is only for FIRST-TIME visitors who are actually seeing the door.
+  // A reopen from the wallet button ("Guest or wallet?") is not a first-time
+  // visit, and neither is landing signed-in.
+  const showIntro = showEntry && !reopened && !introSeen;
+
   return {
-    showEntry: shouldShowEntry({ status, choice, reopened }),
+    showEntry,
+    showIntro,
     choice,
     chooseGuest,
     chooseWallet,

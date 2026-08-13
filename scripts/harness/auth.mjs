@@ -87,7 +87,16 @@ export async function signInWithKeypair(supabaseUrl, anonKey, keypair, label = '
  * exception would make the expected case the awkward one to write.
  */
 export async function callPlay(supabaseUrl, accessToken, body) {
-  const res = await fetch(`${supabaseUrl}/functions/v1/play`, {
+  return callFn(supabaseUrl, 'play', accessToken, body);
+}
+
+/** Same as callPlay, for the multiplayer function. */
+export async function callMp(supabaseUrl, accessToken, body) {
+  return callFn(supabaseUrl, 'mp', accessToken, body);
+}
+
+async function callFn(supabaseUrl, name, accessToken, body) {
+  const res = await fetch(`${supabaseUrl}/functions/v1/${name}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,

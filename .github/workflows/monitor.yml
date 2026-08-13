@@ -1,0 +1,45 @@
+name: monitor
+
+# Fires the owner money digest every 15 minutes. On any RED condition, exit
+# 1 sets the run to failed AND POSTs a short summary to MONITOR_WEBHOOK_URL
+# (e.g. a Discord channel webhook). Cost: ~35,000 runs/year, each < 30
+# seconds — well inside GitHub Actions' free-tier 2,000-min/mo budget.
+#
+# Setup:
+#   1. Repo Settings -> Secrets and variables -> Actions
+#   2. Add secrets: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+#      MONITOR_WEBHOOK_URL (the Discord/ntfy/etc URL from your provider)
+#   3. This workflow reads them into the script's env and never writes them to
+#      files, logs, or job outputs.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: run digest
+        env:
+          # The digest CLI reads Supabase config from the same env the app
+          # does — VITE_ prefixed for the URL and anon key, service role
+          # separately. Values come from repo secrets, not from the repo.
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # The digest posts an alert summary to this URL when a RED
+          # condition trips. If unset, alerts still exit 1 (visible in the
+          # Actions runs list) but no push notification is sent.
+          MONITOR_WEBHOOK_URL: ${{ secrets.MONITOR_WEBHOOK_URL }}
+        run: npm run --silent monitor:digest -- --alert
