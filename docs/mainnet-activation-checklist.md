@@ -47,6 +47,26 @@ The list is short on purpose. Long checklists get skimmed; short ones get done.
       `geo_unknown`, not as the caller's real country. Confirms in the digest
       as `geo_refused → reason: 'geo_unknown'` counts, not spurious allows.
 
+## Geo-blocking — non-negotiable
+
+Same tier as PITR. Shipping to mainnet with this off is the single worst
+configuration this system can be in: every blocked jurisdiction becomes
+reachable, and the compliance posture the whole payment path rests on is simply
+not running.
+
+- [ ] `select public.geo_blocking_enabled();` returns **true** immediately
+      before the flip, and again immediately after
+- [ ] `select * from public.feature_flag_audit where key = 'geo_blocking'
+      order by changed_at desc limit 5;` — the most recent row turns it ON, and
+      whoever flipped it is named
+- [ ] `select count(*) from public.integrity_events where kind = 'geo_bypassed';`
+      is reviewed, not just counted — every row is a purchase that only
+      succeeded because the switch was off. On devnet that is expected; any row
+      dated after the mainnet flip is an incident
+- [ ] `select count(*) from public.integrity_kinds_unlogged();` returns 0 —
+      otherwise a geo event is being silently dropped by the CHECK constraint,
+      which is exactly how `geo_refused` went unrecorded for its whole life
+
 ## Monitoring
 
 - [ ] `npm run monitor:digest -- --alert` returns exit 0 immediately before

@@ -150,6 +150,40 @@ network; stake tables are flag-off at three independent database gates.
 
 ## What we do not claim
 
+- **Geo-blocking is currently OFF on devnet, by a switch, on purpose.** The
+  `geo_blocking` feature flag gates `geo_allows_money`. It ships **ON** — the
+  migration inserts it enabled, and a missing row also reads as enabled, so
+  neither a fresh environment nor a partial restore can end up permissive by
+  accident. This project's row was turned off deliberately on 2026-08-14 to
+  test the purchase path from Israel, which is on the blocklist.
+
+  While off, `geo_allows_money` returns `{allowed: true, reason: geo_disabled}`
+  — never a bare true, so "permitted" and "not checked" are distinguishable —
+  and every payment intent it lets through writes a `geo_bypassed` integrity
+  event naming the country and amount. Every flip writes a
+  `feature_flag_audit` row with the role that made it.
+
+  With the switch ON the behaviour is unchanged: a missing verdict, a null
+  country or a datacenter IP all still refuse with `geo_unknown`, and the
+  blocklist remains data in `geo_blocklist` rather than anything in code.
+
+  **This must be ON before mainnet** — see the activation checklist, where it
+  sits at the same tier as PITR.
+
+- **`geo_refused` events were never recorded, and nobody noticed until
+  2026-08-14.** `integrity_events.kind` carries a CHECK constraint, and
+  `geo_refused` was never in it; `log_integrity_event` ends in
+  `exception when others then null`, so every geographic refusal this system
+  ever made was silently dropped. Found by probing the insert directly rather
+  than trusting that the code contained a logging call. The constraint now
+  admits `geo_refused` and `geo_bypassed`, and
+  `public.integrity_kinds_unlogged()` compares the kinds the code emits against
+  the kinds the constraint permits so the next one cannot hide. It reads
+  function bodies rather than a hand-kept list. **The swallow itself stays** —
+  logging is best-effort on a path already going wrong, and a failed write must
+  not turn a refusal into a 500. What was missing was a way to notice, not
+  error propagation.
+
 - **VPN evasion is not solved.** IP geolocation is a compliance signal, not a
   security control. A determined user tunnels through an allowed country and
   this stops none of it. Datacenter-ASN detection catches the casual case only.
