@@ -8,6 +8,7 @@ import {
   type MatchFormat,
   type RoundOutcome,
 } from '../utils/rules';
+import type { Opponent } from '../types/game';
 import { getBotChoice } from '../utils/getBotChoice';
 import { recordSubmitLatency } from '../utils/latency';
 import { REVEAL_DELAY_MS } from '../constants/gameConfig';
@@ -107,7 +108,18 @@ async function callPlay(
 export interface RoundsApi {
   /** True only when a third party could check the result. Guest mode is false. */
   readonly verifiable: boolean;
-  openMatch(format: MatchFormat, theme: string | null, fastMode: boolean): Promise<string>;
+  /**
+   * `opponent` defaults to 'random' at every layer — here, in the Edge
+   * Function, and in `open_match` itself. That chain of defaults is what keeps
+   * a client built before Nemesis (or with its flag off) playing exactly the
+   * match it played before.
+   */
+  openMatch(
+    format: MatchFormat,
+    theme: string | null,
+    fastMode: boolean,
+    opponent?: Opponent,
+  ): Promise<string>;
   openRound(matchId: string): Promise<OpenRound>;
   submit(round: OpenRound, playerChoice: Choice): Promise<Reveal>;
   /**
@@ -126,12 +138,13 @@ export function createServerRounds(client: SupabaseClient): RoundsApi {
   return {
     verifiable: true,
 
-    async openMatch(format, theme, fastMode) {
+    async openMatch(format, theme, fastMode, opponent = 'random') {
       const data = await callPlay(client, {
         action: 'open_match',
         format,
         theme,
         fast_mode: fastMode,
+        opponent,
       });
       if (typeof data.match_id !== 'string') throw new Error('open_match: no match id');
       return data.match_id;
@@ -257,6 +270,10 @@ export function createLocalRounds(): RoundsApi {
   return {
     verifiable: false,
 
+    // `opponent` is accepted and ignored, and the UI never offers the choice to
+    // a guest: this draw is uniform, and a local bot wearing Nemesis's name
+    // would make every line of the debrief a claim about a match that did not
+    // happen. Guests get the honest opponent, not the flattering label.
     async openMatch() {
       secrets.clear();
       nextRoundId = 1;

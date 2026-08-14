@@ -93,3 +93,22 @@ export const STAKE_TABLES_ENABLED = import.meta.env.VITE_ENABLE_STAKE_TABLES ===
  * inserts.
  */
 export const TOURNAMENTS_UI_ENABLED = import.meta.env.VITE_ENABLE_TOURNAMENTS === 'true';
+
+/**
+ * NEMESIS — the adaptive solo opponent.
+ *
+ * Off until the `play` Edge Function carrying the predictor is deployed. That
+ * ordering is the whole reason this flag exists: `open_match` accepts an
+ * `opponent` argument with a DEFAULT of 'random', so an app that offers the
+ * choice while the old function is live would take the pick, send it nowhere,
+ * and hand the player a uniform bot labelled Nemesis. Every number in the
+ * debrief would then be true about a match the player thinks they had with
+ * something else.
+ *
+ * The gate is the prop being undefined in App, not a hidden button — same
+ * pattern as tournaments and the friend match. With it off, HomeScreen renders
+ * exactly the screen it rendered before Nemesis existed.
+ *
+ * To enable: VITE_ENABLE_NEMESIS=true, and rebuild — after the deploy.
+ */
+export const NEMESIS_UI_ENABLED = import.meta.env.VITE_ENABLE_NEMESIS === 'true';

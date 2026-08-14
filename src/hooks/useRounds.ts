@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Choice, MatchFormat } from '../types/game';
+import type { Choice, MatchFormat, Opponent } from '../types/game';
 import { getSupabase } from '../data/supabaseClient';
 import { REVEAL_DELAY_MS } from '../constants/gameConfig';
 import {
@@ -62,7 +62,20 @@ export interface RoundsState {
   trouble: RoundTrouble;
   /** True only when a result could be checked by someone else. Guests: false. */
   verifiable: boolean;
-  beginMatch: (format: MatchFormat, theme: string | null, fast: boolean) => void;
+  beginMatch: (
+    format: MatchFormat,
+    theme: string | null,
+    fast: boolean,
+    opponent?: Opponent,
+  ) => void;
+  /**
+   * The server's id for the match in progress, or null.
+   *
+   * A getter rather than a value: it lives in a ref because changing it must
+   * not re-render mid-round, and the one caller (the post-match debrief) reads
+   * it at the moment the match completes, when the ref is exactly current.
+   */
+  currentMatchId: () => string | null;
   /** Prefetch the next round's commitment. Safe to call repeatedly. */
   prefetch: () => void;
   retry: () => void;
@@ -116,10 +129,16 @@ export function useRounds(authenticated: boolean, authResolved = true): RoundsSt
   const matchInFlight = useRef<Promise<string> | null>(null);
   const openRoundRef = useRef<OpenRound | null>(null);
   const openInFlight = useRef<Promise<OpenRound> | null>(null);
-  const matchOpts = useRef<{ format: MatchFormat; theme: string | null; fast: boolean }>({
+  const matchOpts = useRef<{
+    format: MatchFormat;
+    theme: string | null;
+    fast: boolean;
+    opponent: Opponent;
+  }>({
     format: 'single',
     theme: null,
     fast: false,
+    opponent: 'random',
   });
   /** The submit currently waiting on an answer, and how to hand it back. */
   const pending = useRef<{ committed: Committed; resolve: (c: Choice) => void } | null>(null);
@@ -144,9 +163,9 @@ export function useRounds(authenticated: boolean, authResolved = true): RoundsSt
   const ensureMatch = useCallback(async (): Promise<string> => {
     if (matchIdRef.current) return matchIdRef.current;
     if (!matchInFlight.current) {
-      const { format, theme, fast } = matchOpts.current;
+      const { format, theme, fast, opponent } = matchOpts.current;
       matchInFlight.current = api
-        .openMatch(format, theme, fast)
+        .openMatch(format, theme, fast, opponent)
         .then((id) => {
           matchIdRef.current = id;
           return id;
@@ -301,9 +320,9 @@ export function useRounds(authenticated: boolean, authResolved = true): RoundsSt
   }, [clearStallTimer]);
 
   const beginMatch = useCallback(
-    (format: MatchFormat, theme: string | null, fast: boolean) => {
+    (format: MatchFormat, theme: string | null, fast: boolean, opponent: Opponent = 'random') => {
       reset();
-      matchOpts.current = { format, theme, fast };
+      matchOpts.current = { format, theme, fast, opponent };
       // Round 1's commitment is fetched now, during the Home→round transition,
       // so the first tap does not wait for it — and so a cold start lands here
       // rather than inside a reveal.
@@ -360,6 +379,7 @@ export function useRounds(authenticated: boolean, authResolved = true): RoundsSt
     trouble,
     verifiable: api.verifiable,
     beginMatch,
+    currentMatchId: () => matchIdRef.current,
     prefetch,
     retry,
     reset,
