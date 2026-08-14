@@ -6,7 +6,7 @@
  *   - any console errors or unhandled promise rejections during click
  *   - the network responses for the auth endpoints
  *
- * Usage:  URL=https://ftable.co.il/evenshock/ node scripts/wallet-diag.mjs
+ * Usage:  npx cross-env URL=https://ftable.co.il/evenshock/ node scripts/wallet-diag.mjs
  */
 import { chromium } from 'playwright';
 

@@ -1,7 +1,10 @@
 /**
  * The round-open timing channel, measured.
  *
- *   EVENSHOCK_LIVE=1 node scripts/harness/nemesis-timing.mjs
+ *   npm run e2e:nemesis-timing
+ *
+ * Sample size and bucket count are overridable, cross-shell:
+ *   npx cross-env EVENSHOCK_LIVE=1 ROUNDS=400 node scripts/harness/nemesis-timing.mjs
  *
  * WHY THIS EXISTS. Nemesis picks its move at round OPEN, which is new server
  * work on the request that happens BEFORE the player throws. If that work took

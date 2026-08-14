@@ -1,7 +1,7 @@
 /**
  * A whole tournament, played through the code the UI calls.
  *
- *   TOURNAMENT_ID=<uuid> npm run e2e:tournament
+ *   npx cross-env TOURNAMENT_ID=<uuid> npm run e2e:tournament
  *
  * WHAT MAKES THIS A UI PROOF AND NOT A DATABASE PROOF. Every call below goes
  * through `createTournaments` and `createMultiplayer` — the same two modules
