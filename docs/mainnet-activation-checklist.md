@@ -61,6 +61,15 @@ The list is short on purpose. Long checklists get skimmed; short ones get done.
 - [ ] `npm run e2e:load` is 8/8 green against production within the last week
 - [ ] `npm run devnet:e2e` is 18/18 green — chain path still works after any
       mainnet-related code change
+- [ ] **Re-run the Nemesis timing measurement and tighten the bound.** The
+      devnet result is a 36.1ms bound (see security-checklist.md, "What we do
+      not claim"), deliberately stopped short because the residual risk is a
+      sub-15ms side channel in a game with no money in it. With money in it,
+      pool `npm run e2e:nemesis-timing` across several hours — the 600/hour
+      `open_round` cap limits one run to ~550 samples — and drive the minimum
+      detectable effect below 15ms, which is the size the leak would plausibly
+      be. Record the new MDE, not just the p-value: a PASS with a loose bound
+      is the same as no measurement.
 
 ---
 

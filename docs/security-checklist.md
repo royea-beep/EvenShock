@@ -161,6 +161,58 @@ network; stake tables are flag-off at three independent database gates.
   something other than what it committed to: the digest binds
   `round_id:seat:move:nonce` and the client checks both seats on every resolved
   round.
+- **The round-open timing channel is bounded, not closed.** Nemesis picks its
+  move at round open, which is new server work happening *before* the player
+  throws. If read rounds were measurably slower than blind ones, round-open
+  latency would announce "it is reading you this round" — worth strictly more
+  to a player than knowing the move, because knowing the move wins one round
+  and knowing the mode wins every round they choose to spend it on.
+
+  Measured on 2026-08-14 with `npm run e2e:nemesis-timing` — 235 samples,
+  paced under the 60/min `open_round` limit, ground truth read as operator
+  because `nemesis_rounds` has no client grants:
+
+  | | |
+  |---|---|
+  | read rounds | 74, mean 361.3ms |
+  | blind rounds | 161, mean 381.2ms |
+  | difference | **−19.9ms** (95% CI −45.2 to +5.4) |
+  | mutual information | 0.01137 bits |
+  | permutation p (2000 shuffles) | 0.309 |
+  | minimum detectable effect | **36.1ms** (80% power, α 0.05) |
+
+  **What this rules out:** any leak larger than about 36ms. The difference is
+  also NEGATIVE — read rounds were *faster* — which is the opposite direction
+  to the leak hypothesis and mild reassurance beyond the p-value, since a real
+  channel would have to make the extra work show up as extra time.
+
+  **What it does not rule out:** a leak smaller than 36ms. The specific thing
+  being guarded against — skipping the `nemesis_open` round trip — is one
+  same-region Postgres query, plausibly 3–15ms, i.e. *below* this run's
+  resolution. This is a bound, not a clean bill of health.
+
+  **Why we stopped here.** `src/data/nemesisConstantWork.test.ts` guards the
+  property structurally: it asserts against the Edge Function source that both
+  branches always run, and it is mutation-checked — introducing the tempting
+  optimisation (skip the prediction when the coin has already landed blind)
+  fails it. Between that and a 36ms bound, what remains unmeasured is a
+  sub-15ms channel on a devnet game with no real money. Driving the MDE to
+  ~10ms needs roughly 25× the samples; at 600 `open_round` calls per hour that
+  is about six hours of wall clock across multiple runs. Not worth it at this
+  stake. **The calculus changes on mainnet** — see the activation checklist.
+
+- **Nemesis exploits slightly less often than configured, and it is not yet
+  clear whether that is chance.** The advertised difficulty should match the
+  delivered one, so the gap is tracked rather than waved through.
+  `nemesis_rounds` stores the rate in force for each round, so this needs no
+  reconstruction. As of 2026-08-14, cumulative over the one account with real
+  volume: 336 rounds, 96 exploited (0.286) against 111.1 expected from the
+  stored rates, **z = −1.78** (p ≈ 0.075). Not significant, but the deficit has
+  persisted and the z has grown with n (−1.58 at 105 rounds, −1.78 at 336),
+  which is the pattern that would eventually separate a small bias from noise.
+  Re-check once a few hundred more rounds exist; if z passes −2.5 it needs a
+  cause, most likely in how `nemesis_open` derives the ramped rate.
+
 - **Nothing here is a legal opinion.** The no-off-ramp claim and the geo
   blocklist are different postures and counsel should be asked which one the
   product is resting on.
