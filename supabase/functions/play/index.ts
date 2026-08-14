@@ -269,6 +269,19 @@ function drawMove(): Choice {
   return CHOICES[byte[0] % 3];
 }
 
+/**
+ * A uniform number in [0, 1), from `crypto.getRandomValues`. This is the coin
+ * that decides whether Nemesis plays its read or throws blind, so it gets the
+ * same grade of randomness as the move itself — a predictable coin would let a
+ * player know which rounds to deviate on, which is worth more than knowing the
+ * move.
+ */
+function drawUnitInterval(): number {
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  return (((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0) / 4294967296;
+}
+
 // ------------------------------------------------------------------ serve
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -355,18 +368,23 @@ async function openMatch(db: SupabaseClient, userId: string, body: Record<string
   // status stays 'in_progress' until the server finalizes it, and the
   // leaderboard counts only finalized matches — so walking out of a losing
   // match records nothing rather than recording a win.
+  // Which opponent. Anything unrecognised falls back to the uniform bot rather
+  // than erroring: an unknown value must not become a harder game by accident.
+  const opponent = body.opponent === 'nemesis' ? 'nemesis' : 'random';
+
   const { data, error } = await db.rpc('open_match', {
     p_user_id: userId,
     p_format: body.format,
     p_theme: typeof body.theme === 'string' ? body.theme : null,
     p_fast_mode: body.fast_mode === true,
+    p_opponent: opponent,
   });
   if (error) return fail('db_error', error.message, 500);
 
   const refused = rpcError(data);
   if (refused) return refused;
 
-  return json({ match_id: data.match_id });
+  return json({ match_id: data.match_id, opponent: data.opponent });
 }
 
 // ----------------------------------------------------------- report_integrity
@@ -405,9 +423,42 @@ async function reportIntegrity(
 async function openRound(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
   if (typeof body.match_id !== 'string') return fail('bad_request', 'match_id required', 400);
 
-  const move = drawMove();
+  // BOTH BRANCHES, EVERY ROUND, WHATEVER THE MODE.
+  //
+  // The blind move is drawn, the coin is flipped and the read is computed on
+  // every single round — before anything looks at whether the read will be
+  // used. Skipping the prediction when the coin is going to land blind would
+  // be the obvious optimisation and it would open a side channel: round-open
+  // latency would announce "Nemesis is reading you this round", and a player
+  // who can hear that simply deviates. That is worth more to them than knowing
+  // the move itself, so the work is kept constant instead.
+  //
+  // NEMESIS CANNOT SEE THIS ROUND'S THROW. `nemesis_open` runs before the round
+  // row exists, reads only rounds in state 'resolved', and the move it informs
+  // is committed to below — with the digest handed to the client — before the
+  // player moves. A peek would break that commitment at reveal, which
+  // verifyRound checks on every resolved round.
+  const blind = drawMove();
+  const coin = drawUnitInterval();
+
+  const { data: read, error: readError } = await db.rpc('nemesis_open', {
+    p_user_id: userId,
+    p_match_id: body.match_id,
+  });
+  if (readError) return fail('db_error', readError.message, 500);
+
+  const readRow = (read ?? {}) as Record<string, unknown>;
+  const rate = Number(readRow.exploit_rate ?? 0);
+  const counter = readRow.counter;
+  const exploited = coin < rate && isChoice(counter);
+  const move: Choice = exploited ? (counter as Choice) : blind;
+
   const nonce = newNonce();
   const commitment = await computeCommitment(move, nonce);
+
+  // Recorded with the round, in one transaction, so the post-match breakdown
+  // can never describe a round differently from how it was played.
+  const nemesis = readRow.reason === 'nemesis' ? { ...readRow, exploited } : null;
 
   const { data, error } = await db.rpc('open_round', {
     p_match_id: body.match_id,
@@ -415,6 +466,7 @@ async function openRound(db: SupabaseClient, userId: string, body: Record<string
     p_move: move,
     p_nonce: nonce,
     p_commitment: commitment,
+    p_nemesis: nemesis,
   });
   if (error) return fail('db_error', error.message, 500);
 
