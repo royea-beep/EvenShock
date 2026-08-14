@@ -325,6 +325,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return await submit(db, userId, body);
     case 'report_integrity':
       return await reportIntegrity(db, userId, body);
+    case 'nemesis_report':
+      return await nemesisReport(db, userId, body);
     case 'economy_state':
       return await economyState(db, userId, body);
     case 'buy':
@@ -416,6 +418,33 @@ async function reportIntegrity(
   if (refused) return refused;
 
   return json({ ok: true });
+}
+
+// ------------------------------------------------------------ nemesis_report
+
+/**
+ * What Nemesis saw, handed back after the match and never during it.
+ *
+ * This is the ONLY route to `nemesis_match_report`, which is revoked from
+ * `anon` and `authenticated` — the browser has no grant to call it with. The
+ * user id comes from the verified token, so a player can only ask about their
+ * own match, and the RPC itself refuses while the match is still in progress:
+ * the breakdown names which rounds were read, and knowing that mid-match is a
+ * live advantage rather than a debrief.
+ */
+async function nemesisReport(db: SupabaseClient, userId: string, body: Record<string, unknown>) {
+  if (typeof body.match_id !== 'string') return fail('bad_request', 'match_id required', 400);
+
+  const { data, error } = await db.rpc('nemesis_match_report', {
+    p_match_id: body.match_id,
+    p_user_id: userId,
+  });
+  if (error) return fail('db_error', error.message, 500);
+
+  const refused = rpcError(data as Record<string, unknown> | null);
+  if (refused) return refused;
+
+  return json(data as Record<string, unknown>);
 }
 
 // ---------------------------------------------------------------- open_round

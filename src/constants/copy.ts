@@ -180,6 +180,25 @@ export const copy = {
     startButton: 'Start game',
     leaderboardButton: 'Leaderboard',
     tournamentsButton: 'Tournaments',
+
+    /**
+     * The opponent picker.
+     *
+     * Both blurbs say what the opponent DOES, because the difference between
+     * them is the whole feature and a player who picks Nemesis without knowing
+     * it reads them will just think the game got unfair. "Some of the time" is
+     * load-bearing: it is 35%, and a player who assumes it reads every round
+     * will misread their own blind losses as being predicted.
+     */
+    opponentLabel: 'Choose an opponent',
+    opponents: {
+      random: 'Random',
+      nemesis: 'Nemesis',
+    } as Record<string, string>,
+    opponentBlurbs: {
+      random: 'Throws at random, every round. Nothing to read, nothing reading you.',
+      nemesis: 'Watches how you throw and plays the counter — some of the time.',
+    } as Record<string, string>,
   },
   leaderboard: {
     title: 'Leaderboard',
@@ -566,5 +585,80 @@ export const copy = {
       `Pool ${pool} − house 0 = ${pool} paid out. You put in ${paid} and took ${prize} — net ${net >= 0 ? '+' : ''}${net} chips.`,
     noPrize: (paid: number) =>
       `You put in ${paid} chips and did not place. The pool went to the top two in full.`,
+  },
+
+  /**
+   * NEMESIS — the debrief.
+   *
+   * The point of this opponent is not that it wins more. It is that afterwards
+   * the player finds out WHY, in numbers they could have counted themselves.
+   * So every line here describes something that actually happened rather than
+   * offering advice: the situation Nemesis watched, the counts it saw, and how
+   * the rounds split between read and blind.
+   *
+   * TWO LINES ARE HONESTY OBLIGATIONS, not flavour:
+   *
+   *   `blindNote` — the blind rounds were genuinely blind. This game does not
+   *   stage losses to keep anyone sweet, and saying so is what lets a player
+   *   believe they out-played it rather than being let through.
+   *
+   *   `trophyCaveat` — a perfect predictability score means "unreadable", and a
+   *   player using an external randomiser genuinely is unreadable. That is the
+   *   theorem working, not an exploit, and it is not defended against. But it
+   *   does mean the trophy measures "did you use a dice" as much as skill, so
+   *   the copy says that out loud rather than letting a perfect score imply
+   *   something it hasn't earned.
+   */
+  nemesis: {
+    title: 'What Nemesis saw',
+
+    /** Cold start, stated rather than hidden — see nemesis_config.ramp_start_rounds. */
+    calibrating: (roundsLeft: number) =>
+      `Nemesis is still learning you — ${roundsLeft} more ${roundsLeft === 1 ? 'round' : 'rounds'}. Until then it throws blind, every round.`,
+
+    readLabel: 'Rounds it read you',
+    blindLabel: 'Rounds it threw blind',
+    splitLine: (read: number, blind: number) =>
+      `It read you on ${read} of ${read + blind} ${read + blind === 1 ? 'round' : 'rounds'}.`,
+    wonOf: (won: number, of: number) => `you won ${won} of ${of}`,
+    blindNote:
+      'The blind rounds were blind. Nothing is thrown away to keep a match close — when you win one of those, you won it.',
+
+    tellTitle: 'Your tell',
+    /**
+     * The situation the lens was watching, as a sentence opener. `prevMove`
+     * arrives already labelled (`copy.choices[...]`) rather than as the raw
+     * move, so the two halves of the sentence never disagree about how a
+     * choice is spelled.
+     */
+    situation: (prevOutcome: string | null, prevMove: string | null) => {
+      const outcome =
+        prevOutcome === 'win' ? 'winning' : prevOutcome === 'lose' ? 'losing' : 'tying';
+      if (prevOutcome && prevMove) return `After ${outcome} a round having thrown ${prevMove}`;
+      if (prevOutcome) return `After ${outcome} a round`;
+      return `After you threw ${prevMove}`;
+    },
+    /** The conditional lenses: something happened, then the player answered. */
+    tellSentence: (situation: string, move: string, count: number, total: number) =>
+      `${situation}, you followed with ${move} ${count} ${count === 1 ? 'time' : 'times'} out of ${total}.`,
+    /** The marginal lens, which is not conditional on anything and must not be
+     *  worded as though it were. */
+    tellOverall: (move: string, count: number, total: number) =>
+      `Across every round, you threw ${move} ${count} ${count === 1 ? 'time' : 'times'} out of ${total}.`,
+    noTell:
+      "It never found a lean worth playing this match. It threw blind because there was nothing to read.",
+
+    predictabilityTitle: 'How readable you are',
+    predictabilityValue: (percent: number) => `${percent}%`,
+    trend: {
+      down: (before: number, after: number) => `Down from ${before}% to ${after}% — harder to read than you were.`,
+      up: (before: number, after: number) => `Up from ${before}% to ${after}% — easier to read than you were.`,
+      flat: (after: number) => `Steady at ${after}%.`,
+    },
+    predictabilityPending:
+      'Not enough rounds yet to say how readable you are.',
+    trophyTitle: 'Least readable yet',
+    trophyCaveat:
+      "0% means nothing in your throws predicted the next one. A dice would score that too — this measures how unreadable you were, not how you got there.",
   },
 } as const;

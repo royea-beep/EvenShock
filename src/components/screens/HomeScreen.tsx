@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import type { MatchFormat } from '../../types/game';
+import type { MatchFormat, Opponent } from '../../types/game';
 import type { ThemeId } from '../../constants/themes';
 import { copy } from '../../constants/copy';
 import { ThemePicker, type ThemeShop } from '../ThemePicker';
@@ -8,6 +8,7 @@ import { ChipsShop } from '../ChipsShop';
 import type { Purchase } from '../../hooks/usePurchase';
 
 const FORMATS: MatchFormat[] = ['single', 'bo3', 'bo5'];
+const OPPONENTS: Opponent[] = ['random', 'nemesis'];
 
 interface HomeScreenProps {
   format: MatchFormat;
@@ -37,6 +38,15 @@ interface HomeScreenProps {
    *  for guests and absent while the flag is off, because a button that
    *  cannot work is worse than no button. */
   onOpenTournaments?: () => void;
+  /**
+   * The opponent picker. Absent for guests and while the Nemesis flag is off —
+   * and for guests the reason is sharper than "the button wouldn't work": a
+   * guest's rounds are drawn in this browser, so a guest who picked Nemesis
+   * would get the uniform bot under another name. The picker is simply not
+   * there rather than there and lying.
+   */
+  opponent?: Opponent;
+  onOpponentChange?: (opponent: Opponent) => void;
 }
 
 export function HomeScreen({
@@ -51,6 +61,8 @@ export function HomeScreen({
   onPlayFriend,
   onOpenLeaderboard,
   onOpenTournaments,
+  opponent,
+  onOpponentChange,
 }: HomeScreenProps) {
   return (
     <motion.div
@@ -129,6 +141,54 @@ export function HomeScreen({
           ))}
         </div>
       </div>
+
+      {/* The opponent. Under the format because it is the same kind of choice —
+          what match am I about to play — and above everything else because it
+          is the one that changes how the game behaves rather than how it looks.
+          The blurb is not decoration: a player who picks Nemesis without
+          knowing it reads them will experience the same match as an unfair
+          one. */}
+      {onOpponentChange && (
+        <div className="w-full space-y-3">
+          <p className="display-type text-sm font-semibold text-muted">
+            {copy.home.opponentLabel}
+          </p>
+          <div
+            className="mx-auto grid max-w-md grid-cols-2 items-stretch gap-1.5 sm:gap-2"
+            role="radiogroup"
+            aria-label={copy.home.opponentLabel}
+          >
+            {OPPONENTS.map((o) => (
+              <button
+                key={o}
+                type="button"
+                role="radio"
+                aria-checked={opponent === o}
+                onClick={() => onOpponentChange(o)}
+                style={{
+                  borderRadius: 'var(--radius-themed-md)',
+                  borderWidth: 'var(--border-width)',
+                  borderColor: 'var(--border-color)',
+                  borderStyle: 'var(--border-style)',
+                }}
+                className={`display-type cursor-pointer px-2.5 py-2.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current sm:px-5 sm:text-sm ${
+                  opponent === o
+                    ? 'bg-scissors text-scissors-ink'
+                    : 'bg-elevated text-ink hover:opacity-80'
+                }`}
+              >
+                {copy.home.opponents[o]}
+              </button>
+            ))}
+          </div>
+          {/* Announced politely: the description changes with the selection, and
+              a sighted player sees it swap while a screen reader user would
+              otherwise hear nothing at all happen. */}
+          <p aria-live="polite" className="mx-auto max-w-md text-xs text-muted">
+            {copy.home.opponentBlurbs[opponent ?? 'random']}
+          </p>
+        </div>
+      )}
 
       {/* Directly under the masthead, above the choices: the balance is the
           reason the shop below it means anything, and for a guest the line

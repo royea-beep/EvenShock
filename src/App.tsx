@@ -35,6 +35,9 @@ import { TournamentsPanel } from './components/TournamentsPanel';
 import { useTournaments } from './hooks/useTournaments';
 import { TOURNAMENTS_UI_ENABLED } from './constants/features';
 import { usePersistence } from './hooks/usePersistence';
+import { useNemesis } from './hooks/useNemesis';
+import { NEMESIS_UI_ENABLED } from './constants/features';
+import type { Opponent } from './types/game';
 // TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
 import { ImpactVariantBadge } from './components/ImpactVariantBadge';
 import { IMPACT_VARIANT } from './utils/impactVariant';
@@ -79,6 +82,19 @@ function App() {
   // when the screen changes — and because the panel renders at App level,
   // above every screen, same pattern as the entry door.
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  // Which solo opponent the next match is against. Home state rather than
+  // useGame state: useGame is the multiplayer seam and knows only how to ask
+  // for a move, so who is answering is not its business. It is deliberately
+  // NOT persisted — the pick is a decision about the next match, and a player
+  // returning tomorrow should meet the choice again rather than a remembered
+  // one they cannot remember making.
+  const [opponent, setOpponent] = useState<Opponent>('random');
+  // The debrief. Signed-in only and flag-gated for the same reason the picker
+  // is: a guest's rounds are drawn in this browser, so there is nothing to
+  // report on.
+  const nemesisEnabled =
+    NEMESIS_UI_ENABLED && auth.status === 'authenticated';
+  const nemesis = useNemesis(nemesisEnabled);
   // The front door. Asked once, remembered, reopenable from the wallet button.
   // It renders OVER a mounted, playable app rather than in front of it — see
   // EntryScreen: if it fails, the game is what's left.
@@ -199,19 +215,32 @@ function App() {
     settledRef.current = history;
 
     economy.settleMatch(history.length, history.filter((e) => e.outcome === 'win').length);
-  }, [game.matchStatus, history, economy]);
+
+    // The debrief, asked for once the match is finalized — `nemesis_match_report`
+    // refuses while a match is in progress, and rightly: naming which rounds
+    // were read is a live advantage before the last one is played. The match id
+    // is read from the ref at this exact moment, which is the one moment it is
+    // guaranteed to be the match that just ended.
+    const matchId = rounds.currentMatchId();
+    if (opponent === 'nemesis' && matchId) nemesis.load(matchId);
+  }, [game.matchStatus, history, economy, rounds, opponent, nemesis]);
 
   const handleStart = () => {
     unlockAudio(); // warm the audio context from a real user gesture
+    // Last match's debrief goes before this one opens, not when the next one
+    // ends: the match-end screen unmounts on the way into a new match, and a
+    // stale report surviving that transition would appear over the wrong match.
+    nemesis.clear();
     // Opens the match server-side and prefetches round 1 before the round
     // screen is even interactive.
-    rounds.beginMatch(game.format, theme, fast);
+    rounds.beginMatch(game.format, theme, fast, nemesisEnabled ? opponent : 'random');
     game.startMatch();
   };
 
   /** Leaving abandons the server-side match too: it stays in_progress, and the
    *  leaderboard counts only finalized matches. */
   const handleLeave = () => {
+    nemesis.clear();
     rounds.reset();
     game.playAgain();
   };
@@ -372,6 +401,12 @@ function App() {
                     ? tournaments.open
                     : undefined
                 }
+                // The opponent picker. Absent for guests and while the flag is
+                // off — and for guests the reason is not just the grant: their
+                // rounds are drawn locally, so Nemesis would be the uniform bot
+                // wearing a name it had not earned.
+                opponent={opponent}
+                onOpponentChange={nemesisEnabled ? setOpponent : undefined}
               />
             )}
 
@@ -417,6 +452,8 @@ function App() {
                 // clears the derived history.
                 onPlayAgain={handleStart}
                 onChangeLook={handleLeave}
+                nemesisReport={nemesis.report}
+                nemesisBest={nemesis.best}
               />
             )}
           </AnimatePresence>

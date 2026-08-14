@@ -8,6 +8,8 @@ import { HistoryTrail, OUTCOME_MARK } from '../MatchStatusBar';
 import { play } from '../../utils/sound';
 import { getMatchStats, type RoundEntry } from '../../utils/roundHistory';
 import { buildShareLine } from '../../utils/share';
+import { NemesisDebrief } from '../NemesisDebrief';
+import type { NemesisBest, NemesisReport } from '../../data/nemesis';
 
 interface MatchEndScreenProps {
   /** What this match paid. Same curve on both paths — see utils/economy.ts. */
@@ -21,6 +23,14 @@ interface MatchEndScreenProps {
   onPlayAgain: () => void;
   /** Back to Home, where the look and format can be changed. */
   onChangeLook: () => void;
+  /**
+   * The Nemesis debrief. Null for a random-opponent match and while the report
+   * is still in flight — the panel renders nothing rather than a placeholder,
+   * because a skeleton that resolves to "there was no debrief" is worse than
+   * the screen this player already knows.
+   */
+  nemesisReport?: NemesisReport | null;
+  nemesisBest?: NemesisBest | null;
 }
 
 export function MatchEndScreen({
@@ -32,6 +42,8 @@ export function MatchEndScreen({
   history,
   onPlayAgain,
   onChangeLook,
+  nemesisReport = null,
+  nemesisBest = null,
 }: MatchEndScreenProps) {
   const reducedMotion = useReducedMotion();
   const playerWon = matchWinner === 'player';
@@ -115,6 +127,11 @@ export function MatchEndScreen({
         )}
 
         <Stats stats={stats} />
+
+        {/* After the score and the recap, before the share line: the debrief is
+            about how the match went, so it belongs with the other things that
+            describe it — not competing with the result for the first read. */}
+        <NemesisDebrief report={nemesisReport} best={nemesisBest} />
 
         <ShareResult score={score} format={format} history={history} winner={matchWinner} />
 
