@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BRAND_NAME } from '../constants/brand';
 import type { AuthState } from '../hooks/useAuth';
 import { detectWallet, shortenAddress, WALLET_INSTALL } from '../data/wallet';
 import { isSupabaseConfigured, getSupabase } from '../data/supabaseClient';
@@ -258,7 +259,7 @@ function NoWalletPopover({ onDismiss }: { onDismiss: () => void }) {
         </button>
       </div>
       <p className="mt-1.5">
-        Install a wallet extension to connect. EvenShock supports both:
+        Install a wallet extension to connect. {BRAND_NAME} supports both:
       </p>
       {/* One list, shared with the entry screen — see data/wallet.ts. Two
           places telling a visitor to install different things is a support

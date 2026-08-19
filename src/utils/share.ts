@@ -11,14 +11,18 @@
  * copy-paste into a plain-text channel is not mangled by trailing punctuation.
  */
 
-export const SHARE_ORIGIN = 'https://ftable.co.il/evenshock/';
+// Re-exported so existing importers keep working; the value itself is now
+// operator config. See constants/brand.ts.
+export { SHARE_ORIGIN } from '../constants/brand';
+
+import { BRAND_NAME, SHARE_ORIGIN as ORIGIN } from '../constants/brand';
 
 const INVITE_PARAM = 'invite';
 
 export function buildInviteUrl(code: string): string {
   const trimmed = code.trim();
-  if (!trimmed) return SHARE_ORIGIN;
-  const url = new URL(SHARE_ORIGIN);
+  if (!trimmed) return ORIGIN;
+  const url = new URL(ORIGIN);
   url.searchParams.set(INVITE_PARAM, trimmed.toUpperCase());
   return url.toString();
 }
@@ -58,10 +62,10 @@ export function buildShareLine(input: {
   formatLabel: string;
 }): string {
   return [
-    `EvenShock — ${input.formatLabel}`,
+    `${BRAND_NAME} — ${input.formatLabel}`,
     `${input.headline} ${input.scoreLine}`,
     input.trail ?? '',
-    SHARE_ORIGIN,
+    ORIGIN,
   ]
     .filter(Boolean)
     .join('\n');

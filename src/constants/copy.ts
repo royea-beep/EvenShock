@@ -1,4 +1,7 @@
 import type { Choice, MatchFormat, RoundOutcome } from '../types/game';
+// The brand is operator config, not a literal — see constants/brand.ts. A
+// licensee changes one env var, not seven strings scattered through the copy.
+import { BRAND_NAME } from './brand';
 
 /**
  * All UI copy lives here. Nothing user-facing should be a string literal in a
@@ -49,7 +52,7 @@ export const copy = {
     intro: {
       headline: 'New here?',
       gameLine:
-        'EvenShock is rock-paper-scissors — quick matches against the bot or a friend, XP for playing, chips for winning.',
+        `${BRAND_NAME} is rock-paper-scissors — quick matches against the bot or a friend, XP for playing, chips for winning.`,
       walletLine:
         'A wallet is optional. It keeps your progress on the server, on any browser, and unlocks buying chips — chips have no cash value, they buy cosmetic looks and nothing you can cash out.',
       adultLine: 'Chip purchases are for adults 18 and over.',
@@ -174,7 +177,7 @@ export const copy = {
   },
 
   home: {
-    title: 'EvenShock',
+    title: BRAND_NAME,
     subtitle: 'Rock. Paper. Scissors. Outsmart the bot.',
     formatLabel: 'Choose a format',
     startButton: 'Start game',
@@ -458,7 +461,7 @@ export const copy = {
 
     tosTitle: 'Before your first purchase',
     tosBody:
-      'Chips are in-game credit for EvenShock. They have no cash value, they cannot be redeemed for money, and they cannot leave your account. When you send USDC to buy them, that transaction is final — payments are not reversible.',
+      `Chips are in-game credit for ${BRAND_NAME}. They have no cash value, they cannot be redeemed for money, and they cannot leave your account. When you send USDC to buy them, that transaction is final — payments are not reversible.`,
     tosCheckbox: 'I understand: chips are non-refundable, non-redeemable, and stay in my account.',
     tosContinue: 'I understand — continue',
     tosCancel: 'Not now',

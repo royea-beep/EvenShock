@@ -1,4 +1,5 @@
 import type { SupabaseClient, Session } from '@supabase/supabase-js';
+import { signInStatement } from '../constants/brand';
 
 /**
  * The wallet client wraps `supabase.auth.signInWithWeb3()`.
@@ -59,7 +60,7 @@ export type ConnectResult =
  */
 export async function connectAndSignIn(
   client: SupabaseClient,
-  { statement = 'Sign in to EvenShock.' }: { statement?: string } = {},
+  { statement = signInStatement() }: { statement?: string } = {},
 ): Promise<ConnectResult> {
   const detected = detectWallet();
   if (detected.kind === 'none') return { kind: 'no-wallet' };
