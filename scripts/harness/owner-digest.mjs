@@ -234,6 +234,56 @@ console.log(`\nowner-money-digest — ${digest.as_of}\n`);
   else if (stuck >= T.stuck_intents_over_1h_yellow) warn(`stuck pending intents = ${stuck}`);
 }
 
+// ------------------------------------------------------- acquisition + the gap
+//
+// The digest exists to answer "is the money safe". These two sections answer
+// "is the product going anywhere", which is the question that decides whether
+// the predominance test will ever be runnable. Same owner-only posture as
+// everything above — both RPCs check profiles.is_owner and refuse otherwise.
+{
+  const { data: gap } = await admin.rpc('predominance_gap', { p_user_id: owner.id });
+  const { data: funnel } = await admin.rpc('acquisition_funnel', { p_user_id: owner.id });
+
+  if (gap && !gap.error) {
+    const m = gap.human_matches, p = gap.distinct_players;
+    // A progress bar rather than a bare count: the gap is the point, and "0 of
+    // 250" reads very differently from "0".
+    const filled = Math.round((Math.min(m.have / m.need, 1)) * 24);
+    const bar = '#'.repeat(filled) + '.'.repeat(24 - filled);
+    console.log(`\n  predominance test — ${gap.runnable ? badge('green', ' RUNNABLE ') : 'not yet runnable'}`);
+    console.log(`      human matches   [${bar}] ${m.have}/${m.need}  (${m.pct}%, ${m.remaining} to go)`);
+    console.log(`      distinct players ${String(p.have).padStart(4)}/${p.need}   (${p.remaining} to go)`);
+    console.log(`      classifiable     ${String(gap.classifiable_players.have).padStart(4)}       ${DIM}scored above the confidence floor, so they can be split skilled/unskilled BEFORE pairing${RESET}`);
+    console.log(`      matches/player   ${gap.matches_per_player ?? '—'}`);
+  }
+
+  if (funnel && !funnel.error) {
+    const st = funnel.stages;
+    // Printed as an ordered funnel with drop-off between steps, because the
+    // number that matters is where people stop, not how many arrived.
+    const steps = [
+      ['landed via invite', st.landed_via_invite],
+      ['identity created', st.identity_created],
+      ['wallet connected', st.wallet_connected],
+      ['started a match', st.started_a_match],
+      ['completed a match', st.completed_a_match],
+      ['played a human', st.played_a_human],
+      ['returned next day', st.returned_next_day],
+    ];
+    console.log('\n  acquisition funnel');
+    let prev = null;
+    for (const [label, n] of steps) {
+      const drop = prev === null || prev === 0 ? '' :
+        `${DIM}-${prev - n} (${Math.round(100 * (1 - n / prev))}% drop)${RESET}`;
+      console.log(`      ${label.padEnd(20)} ${String(n).padStart(5)}  ${drop}`);
+      prev = n;
+    }
+    const s = funnel.streaks ?? {};
+    console.log(`      ${DIM}streaks: ${s.players_with_a_streak ?? 0} player(s), longest current ${s.longest_current ?? 0}, best ever ${s.longest_ever ?? 0}${RESET}`);
+    console.log(`      ${DIM}${funnel.note}${RESET}`);
+  }
+}
+
 // Integrity events
 {
   const ev = digest.integrity_events ?? {};

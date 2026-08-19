@@ -36,6 +36,7 @@ import { useTournaments } from './hooks/useTournaments';
 import { TOURNAMENTS_UI_ENABLED } from './constants/features';
 import { usePersistence } from './hooks/usePersistence';
 import { useNemesis } from './hooks/useNemesis';
+import { readInviteCodeFromUrl } from './utils/share';
 import { NEMESIS_UI_ENABLED } from './constants/features';
 import type { Opponent } from './types/game';
 // TEMPORARY: impact-variant comparison. Delete with utils/impactVariant.ts.
@@ -120,6 +121,29 @@ function App() {
     setFormat: game.setFormat,
     setFast,
   });
+
+  /**
+   * Arriving on ?invite=CODE opens the friend surface immediately.
+   *
+   * THE RECIPIENT IS THE SCARCE SIDE of an invite, so their path is the one
+   * worth shortening: the link now lands them on the join screen with the code
+   * already filled, rather than on a home screen they have to read and
+   * navigate. VersusScreen still does the prefill and still does NOT auto-join
+   * — pressing the button is one tap, and auto-joining would race the
+   * wallet-connect flow and hand a legitimate invite a `table_full` refusal.
+   *
+   * Signed-in only, because a table needs an identity on both sides. A guest
+   * who follows an invite sees the entry door first, which is the correct
+   * order — and the code survives in the URL until they get here.
+   */
+  const invitedOpened = useRef(false);
+  useEffect(() => {
+    if (invitedOpened.current) return;
+    if (!MULTIPLAYER_UI_ENABLED || auth.status !== 'authenticated') return;
+    if (!readInviteCodeFromUrl()) return;
+    invitedOpened.current = true;
+    mp.open();
+  }, [auth.status, mp]);
 
   // `window.evenshockLatency()` returns the submit round-trip summary, so
   // anyone testing on a real device can read p50/p95 without collecting console
@@ -454,6 +478,15 @@ function App() {
                 onChangeLook={handleLeave}
                 nemesisReport={nemesis.report}
                 nemesisBest={nemesis.best}
+                // Surfaced after EVERY match, win or lose: the end of a match
+                // is the one moment a player has a result worth sending
+                // someone. Absent for guests and while the flag is off, same
+                // rule as everywhere else.
+                onChallengeFriend={
+                  MULTIPLAYER_UI_ENABLED && auth.status === 'authenticated'
+                    ? () => { nemesis.clear(); mp.open(); }
+                    : undefined
+                }
               />
             )}
           </AnimatePresence>

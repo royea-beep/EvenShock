@@ -31,6 +31,15 @@ interface MatchEndScreenProps {
    */
   nemesisReport?: NemesisReport | null;
   nemesisBest?: NemesisBest | null;
+  /**
+   * Opens the friend surface. Absent for guests and while multiplayer is off.
+   *
+   * This sits on the match-end screen deliberately: the end of a match is the
+   * one moment a player holds a result worth sending someone, and every match
+   * is one of those moments. It is also the only route this product has to the
+   * human-vs-human matches the predominance test needs.
+   */
+  onChallengeFriend?: () => void;
 }
 
 export function MatchEndScreen({
@@ -44,6 +53,7 @@ export function MatchEndScreen({
   onChangeLook,
   nemesisReport = null,
   nemesisBest = null,
+  onChallengeFriend,
 }: MatchEndScreenProps) {
   const reducedMotion = useReducedMotion();
   const playerWon = matchWinner === 'player';
@@ -132,6 +142,28 @@ export function MatchEndScreen({
             about how the match went, so it belongs with the other things that
             describe it — not competing with the result for the first read. */}
         <NemesisDebrief report={nemesisReport} best={nemesisBest} />
+
+        {/* Above the share line, not below it: sharing a result is passive,
+            and inviting someone to answer it is the act that actually brings a
+            second player. */}
+        {onChallengeFriend && (
+          <motion.button
+            type="button"
+            onClick={onChallengeFriend}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            style={{
+              borderRadius: 'var(--radius-themed-md)',
+              boxShadow: 'var(--shadow-card)',
+              borderWidth: 'var(--border-width)',
+              borderColor: 'var(--border-color)',
+              borderStyle: 'var(--border-style)',
+            }}
+            className="display-type w-full cursor-pointer bg-scissors px-8 py-3.5 text-base font-bold text-scissors-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+          >
+            {copy.matchEnd.challengeFriend}
+          </motion.button>
+        )}
 
         <ShareResult score={score} format={format} history={history} winner={matchWinner} />
 

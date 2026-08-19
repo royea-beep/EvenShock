@@ -271,6 +271,10 @@ export const copy = {
     statsWinRate: 'Win rate',
     statsTopMove: 'Most played',
     statsRounds: 'Rounds',
+    /** The acquisition act, on the screen where a player has something to
+     *  send. Names the outcome ("beat this") rather than the mechanism
+     *  ("create a table"), because the mechanism is not what motivates. */
+    challengeFriend: 'Challenge a friend to beat this',
     shareButton: 'Copy result',
     shareCopied: 'Copied',
     shareFailed: 'Press to select, then copy',
