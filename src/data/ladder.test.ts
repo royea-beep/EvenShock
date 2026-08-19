@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asSnapshot, movementOf } from './ladder';
+import { asSnapshot, movementOf, standingKind } from './ladder';
 
 describe('the ladder snapshot', () => {
   it('keeps an empty board distinguishable from a failed load', () => {
@@ -39,6 +39,39 @@ describe('the ladder snapshot', () => {
 
   it('has no movement for a player who has never been rated', () => {
     expect(asSnapshot({ you: {} }).you.lastChange).toBeNull();
+  });
+});
+
+describe('what the standing block shows', () => {
+  const you = (over: Partial<ReturnType<typeof base>> = {}) => ({ ...base(), ...over });
+  function base() {
+    return {
+      onBoard: false, rank: null as number | null, rating: null as number | null,
+      ratedMatches: null as number | null,
+      lastChange: null as null | { delta: number; rating: number; outcome: 'win'; at: string },
+      rateable: true,
+    };
+  }
+
+  it('says unrated for a player who has never been rated', () => {
+    expect(standingKind(you())).toBe('unrated');
+  });
+
+  it('shows the ranked block once there is a rank', () => {
+    expect(standingKind(you({ onBoard: true, rank: 3, rating: 1520 }))).toBe('ranked');
+  });
+
+  it('still says unrated when history exists but nothing it moved does', () => {
+    // An account with rating_history but no current rating — excluded from the
+    // ladder after the fact. Rendering "+162 from your last match" with no rank
+    // and no rating beside it reads as a bug, not as information.
+    expect(standingKind(you({
+      lastChange: { delta: 162, rating: 1662, outcome: 'win', at: '' },
+    }))).toBe('unrated');
+  });
+
+  it('shows the block for a rated player who is below the visible board', () => {
+    expect(standingKind(you({ onBoard: false, rating: 1480 }))).toBe('ranked');
   });
 });
 

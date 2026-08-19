@@ -98,6 +98,20 @@ export function movementOf(change: RatingChange | null): 'up' | 'down' | 'flat' 
   return 'flat';
 }
 
+/**
+ * What the standing block should render.
+ *
+ * `unrated` covers the honest cold start AND a subtler case worth naming: a
+ * player can carry rating history while having no current rating or rank — for
+ * example an account excluded from the ladder after the fact. Rendering the
+ * box for them would float a "+162 from your last match" with no rank and no
+ * rating beside it, which reads as a bug. A movement is only meaningful next
+ * to the thing it moved.
+ */
+export function standingKind(you: LadderSnapshot['you']): 'unrated' | 'ranked' {
+  return you.rank === null && you.rating === null ? 'unrated' : 'ranked';
+}
+
 export function createLadder(client: SupabaseClient) {
   return {
     async snapshot(userId: string, limit = 20): Promise<LadderSnapshot | null> {

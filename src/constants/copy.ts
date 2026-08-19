@@ -213,6 +213,38 @@ export const copy = {
       `No qualifying players yet — play ${n} completed matches to be the first.`,
     qualifyHint: (n: number) =>
       `Play ${n} more completed ${n === 1 ? 'match' : 'matches'} to appear on the board.`,
+    /** ------------------------------------------------------ the rated ladder
+     *
+     * A separate board from the activity table below it, and the distinction
+     * is not cosmetic: the ladder counts HEAD-TO-HEAD matches only, because
+     * those are the ones that carry a skill signal. Solo results are excluded
+     * on purpose — the bot draws uniformly, and against a uniform opponent
+     * every strategy has identical expected value. Measured, not assumed: the
+     * blind branch sits at q=0.46 with 0.50 inside the interval. Ranking
+     * players by solo wins would be ranking them by luck.
+     */
+    ladderTitle: 'Ladder',
+    ladderSubtitle: 'Rated on matches against other people.',
+    yourStanding: 'Your standing',
+    /** Cold start, said plainly rather than showing a blank row. */
+    unrated: 'No rated matches yet — the ladder counts matches against another person, not the bot.',
+    rankOf: (rank: number, total: number) => `#${rank} of ${total}`,
+    ratingLabel: 'Rating',
+    /** Movement is the reason a board is worth reopening. A zero delta reads as
+     *  unchanged rather than "+0": a draw between matched players genuinely
+     *  moves nothing, and dressing that up would make every other number here
+     *  less believable. */
+    movement: {
+      up: (delta: number) => `+${delta} from your last match`,
+      down: (delta: number) => `${delta} from your last match`,
+      flat: 'Unchanged by your last match',
+    },
+    /** The activity table. Retitled honestly: it counts completed matches
+     *  including solo ones, so it measures how much someone plays, not how
+     *  well. It is not the ladder and should not be read as one. */
+    activityTitle: 'Most active',
+    activitySubtitle: 'Completed matches, including against the bot. Activity, not skill.',
+
     notOnBoard:
       'You have played enough to qualify, but your row is outside the top 100.',
     youTag: '(you)',
