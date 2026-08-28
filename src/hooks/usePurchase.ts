@@ -8,9 +8,13 @@ import {
   findOpenIntent,
   getBrowserSolanaWallet,
   hasAcceptedTos,
+  quoteIsFresh,
+  quoteSwap,
+  sendSwap,
   sendUsdc,
   type ConfirmResult,
   type PurchaseIntent,
+  type SwapQuote,
 } from '../data/purchase';
 
 /**
@@ -31,6 +35,19 @@ export type PurchaseState =
   | { kind: 'tos'; intent: null }
   | { kind: 'resume'; intent: PurchaseIntent }
   | { kind: 'creating' } // between the click and the intent row
+  /** Swap path only: fetching a quote for the chosen token. */
+  | { kind: 'quoting'; intent: PurchaseIntent }
+  /** Swap path only: quote in hand, waiting for the player to accept it
+   *  before it expires. The countdown is display; the real bound is on-chain. */
+  | { kind: 'quote'; intent: PurchaseIntent; quote: SwapQuote }
+  /**
+   * Swap path only: the 60-second quote lapsed before the player signed.
+   * Nothing was signed and nothing was charged — the only exits are a fresh
+   * quote on the SAME intent (same reference, so reconciliation stays exact)
+   * or dismissing. Deliberately not a `failed` state: failure copy talks
+   * about money, and no money moved.
+   */
+  | { kind: 'quote_expired'; intent: PurchaseIntent; inputMint: string }
   | { kind: 'wallet'; intent: PurchaseIntent }
   | { kind: 'sending'; intent: PurchaseIntent }
   | { kind: 'pending'; intent: PurchaseIntent; signature: string; startedAt: number }
@@ -56,8 +73,20 @@ export interface Purchase {
   state: PurchaseState;
   /** True while the flow owns the button. UI mirrors this in the disabled state. */
   busy: boolean;
-  /** Kicks off the entire flow. Safe to call any time — it no-ops when busy. */
-  buy: () => void;
+  /**
+   * Kicks off the entire flow. Safe to call any time — it no-ops when busy.
+   * No argument (or the USDC mint's absence) is the direct path, unchanged;
+   * a token mint routes through quote-then-swap.
+   */
+  buy: (tokenMint?: string) => void;
+  /** From the quote modal: sign and send the swap the quote describes. */
+  payQuoted: () => Promise<void>;
+  /** From the quote or quote-expired modal: fetch a fresh quote on the same
+   *  intent. */
+  requote: () => Promise<void>;
+  /** True once a quote attempt came back "aggregator unreachable" — the
+   *  picker disables non-USDC tokens until the next successful quote. */
+  swapDown: boolean;
   /** Called from the ToS gate after the checkbox is confirmed. */
   confirmTos: () => Promise<void>;
   /** Called from either modal to back out. Does not "cancel" any payment
@@ -87,6 +116,12 @@ const USDC_AMOUNT = 1; // Single SKU: 100 chips for $1.
 export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Purchase {
   const client = getSupabase();
   const [state, setState] = useState<PurchaseState>({ kind: 'idle' });
+  const [swapDown, setSwapDown] = useState(false);
+
+  // The token the player picked for THIS purchase. A ref, not state: it must
+  // survive the ToS and resume detours without re-rendering anything, and it
+  // is cleared when the flow returns to idle. Null means USDC-direct.
+  const selectedMintRef = useRef<string | null>(null);
 
   // A ref for the current intent when we're mid-poll — the confirm loop
   // reads this rather than closing over stale state.
@@ -102,17 +137,27 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
   const busy = state.kind !== 'idle' && state.kind !== 'credited' && state.kind !== 'failed';
 
   /** Sign the intent through the wallet, then poll for credit. Shared by the
-   *  fresh-buy path and the "resume with a pay-now" path. */
+   *  fresh-buy path, the "resume with a pay-now" path, and — when a quote is
+   *  passed — the swap path, which differs only in what gets signed. */
   const payAndPoll = useCallback(
-    async (intent: PurchaseIntent) => {
+    async (intent: PurchaseIntent, quote?: SwapQuote) => {
       if (!client) return setState({ kind: 'failed', code: 'client_missing', signed: false });
       const wallet = getBrowserSolanaWallet();
       if (!wallet) return setState({ kind: 'failed', code: 'wallet_missing', signed: false });
 
+      // The client-side expiry gate: a stale quote is refused BEFORE the
+      // wallet ever opens, and the player is offered a fresh quote on the
+      // same intent. (The server never refuses to credit a late-landing swap
+      // — this gate is about not showing a price that is no longer true.)
+      if (quote && !quoteIsFresh(quote)) {
+        setState({ kind: 'quote_expired', intent, inputMint: quote.input_mint });
+        return;
+      }
+
       setState({ kind: 'wallet', intent });
       let signature: string;
       try {
-        const sent = await sendUsdc(intent, wallet);
+        const sent = quote ? await sendSwap(intent, quote, wallet) : await sendUsdc(intent, wallet);
         signature = sent.signature;
       } catch (err) {
         const message = err instanceof Error ? err.message.toLowerCase() : String(err);
@@ -120,13 +165,20 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
           setState({ kind: 'idle' });
           return;
         }
+        if (quote && message === 'quote_expired') {
+          // sendSwap re-checks freshness at the moment of signing; a lapse in
+          // the window between the modal and the wallet lands here. Nothing
+          // was signed.
+          setState({ kind: 'quote_expired', intent, inputMint: quote.input_mint });
+          return;
+        }
         setState({
           kind: 'failed',
           code: 'wallet_error',
           humanCause: err instanceof Error ? err.message : 'wallet failure',
-          // The throw came from sendUsdc, which returns only once the wallet
-          // has signed AND sent. Reaching here means it never got that far, so
-          // nothing left the player's wallet.
+          // The throw came from sendUsdc/sendSwap, which return only once the
+          // wallet has signed AND sent. Reaching here means it never got that
+          // far, so nothing left the player's wallet.
           signed: false,
         });
         return;
@@ -169,20 +221,50 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
     [client, onCredited],
   );
 
+  /** Fetch (or re-fetch) a swap quote on an intent, and land in the quote
+   *  modal. Every path into the swap flow funnels through here, so "stale
+   *  quotes are never resumed" holds by construction. */
+  const startQuote = useCallback(
+    async (intent: PurchaseIntent, inputMint: string) => {
+      if (!client) return setState({ kind: 'failed', code: 'client_missing', signed: false });
+      setState({ kind: 'quoting', intent });
+      const payer = getBrowserSolanaWallet()?.publicKey?.toBase58() ?? null;
+      const result = await quoteSwap(client, intent.intent_id, inputMint, payer);
+      if (result.kind === 'ok') {
+        setSwapDown(false);
+        setState({ kind: 'quote', intent, quote: result.quote });
+        return;
+      }
+      if (result.kind === 'unavailable') {
+        // The aggregator is down, not the purchase path: the picker greys out
+        // the other tokens and USDC-direct carries on untouched.
+        setSwapDown(true);
+        selectedMintRef.current = null;
+        setState({ kind: 'failed', code: 'swap_unavailable', signed: false });
+        return;
+      }
+      setState({ kind: 'failed', code: result.code, signed: false });
+    },
+    [client],
+  );
+
   const startFresh = useCallback(async () => {
     if (!client) return setState({ kind: 'failed', code: 'client_missing', signed: false });
     setState({ kind: 'creating' });
     try {
       const intent = await createIntent(client, USDC_AMOUNT);
-      await payAndPoll(intent);
+      const mint = selectedMintRef.current;
+      if (mint) await startQuote(intent, mint);
+      else await payAndPoll(intent);
     } catch (err) {
       const code = err instanceof Error ? err.message : 'create_failed';
       setState({ kind: 'failed', code, signed: false });
     }
-  }, [client, payAndPoll]);
+  }, [client, payAndPoll, startQuote]);
 
-  const buy = useCallback(() => {
+  const buy = useCallback((tokenMint?: string) => {
     if (busy || !authenticated || !client) return;
+    selectedMintRef.current = tokenMint ?? null;
     setState({ kind: 'checking' });
     void (async () => {
       try {
@@ -217,8 +299,24 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
 
   const resumeExisting = useCallback(async () => {
     if (state.kind !== 'resume') return;
-    await payAndPoll(state.intent);
+    // A swap-flavoured resume (the player picked a token now, or the open
+    // intent already carries one) ALWAYS re-quotes: a 60-second quote is
+    // stale by the time a resume modal exists, and the price shown must be
+    // one that is still true. Same intent, same reference.
+    const mint = selectedMintRef.current ?? state.intent.input_mint ?? null;
+    if (mint) await startQuote(state.intent, mint);
+    else await payAndPoll(state.intent);
+  }, [payAndPoll, startQuote, state]);
+
+  const payQuoted = useCallback(async () => {
+    if (state.kind !== 'quote') return;
+    await payAndPoll(state.intent, state.quote);
   }, [payAndPoll, state]);
+
+  const requote = useCallback(async () => {
+    if (state.kind === 'quote') return startQuote(state.intent, state.quote.input_mint);
+    if (state.kind === 'quote_expired') return startQuote(state.intent, state.inputMint);
+  }, [startQuote, state]);
 
   const checkExisting = useCallback(async () => {
     if (state.kind !== 'resume' || !client) return;
@@ -250,6 +348,7 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
   const dismiss = useCallback(() => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
     pollTimer.current = null;
+    selectedMintRef.current = null;
     // Payments already in flight are not cancelled by dismissing the UI —
     // pending/sending states drop back to idle here, but any on-chain money
     // is still credited by the background reconciler.
@@ -257,6 +356,7 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
   }, []);
 
   const acknowledge = useCallback(() => {
+    selectedMintRef.current = null;
     setState({ kind: 'idle' });
   }, []);
 
@@ -264,6 +364,9 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
     state,
     busy,
     buy,
+    payQuoted,
+    requote,
+    swapDown,
     confirmTos,
     dismiss,
     resumeExisting,

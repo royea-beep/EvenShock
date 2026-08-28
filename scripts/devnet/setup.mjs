@@ -33,6 +33,16 @@ const DECIMALS = 6;
 const MINT_TO_PAYER = 10_000n * 10n ** BigInt(DECIMALS); // 10,000 test dollars
 const MIN_SOL = 0.3;
 
+// The swap-input test token. 9 decimals ON PURPOSE — different from USDC's 6,
+// so any place that scales an input amount with the wrong decimals is off by
+// a factor of a thousand in the suite instead of in production.
+const INPUT_SYMBOL = 'tSOL';
+const INPUT_DECIMALS = 9;
+const INPUT_TO_PAYER = 10_000n * 10n ** BigInt(INPUT_DECIMALS);
+// USDC per whole input token, the devnet provider's fixed rate. Deliberately
+// not round against chips_per_usdc so rate arithmetic is exercised.
+const INPUT_RATE_USDC = 150;
+
 requireServiceRole();
 
 const { connection } = await assertDevnet(RPC_URL);
@@ -47,11 +57,15 @@ const payer = loadKeypair('payer');
 const decoy = loadKeypair('decoy');
 const u1 = loadKeypair('user1');
 const u2 = loadKeypair('user2');
+// Receives the input leg of simulated swaps — the devnet stand-in for a
+// route's liquidity. Only ever a recipient, like the treasury.
+const liquidity = loadKeypair('liquidity');
 
-console.log(`  payer   ${payer.publicKey.toBase58()}`);
-console.log(`  decoy   ${decoy.publicKey.toBase58()}`);
-console.log(`  user1   ${u1.publicKey.toBase58()}`);
-console.log(`  user2   ${u2.publicKey.toBase58()}\n`);
+console.log(`  payer     ${payer.publicKey.toBase58()}`);
+console.log(`  decoy     ${decoy.publicKey.toBase58()}`);
+console.log(`  user1     ${u1.publicKey.toBase58()}`);
+console.log(`  user2     ${u2.publicKey.toBase58()}`);
+console.log(`  liquidity ${liquidity.publicKey.toBase58()}\n`);
 
 // ------------------------------------------------------------------- SOL
 let sol = (await connection.getBalance(payer.publicKey)) / LAMPORTS_PER_SOL;
@@ -97,6 +111,38 @@ if (payerAta.amount < MINT_TO_PAYER / 2n) {
   console.log(`  minted ${formatUnits(MINT_TO_PAYER, DECIMALS)} test units to the payer`);
 }
 
+// ------------------------------------------------------------ input mint
+//
+// The token players "pay with" in swap tests. Jupiter has no devnet, so the
+// devnet swap provider is a fixed-rate quote against this mint, settled by an
+// atomic two-transfer transaction (input leg → liquidity wallet, USDC leg →
+// treasury). Same conjured-currency caveat as the main mint, same interlock.
+let inputMint = state.input_mint ? new PublicKey(state.input_mint) : null;
+
+if (inputMint) {
+  console.log(`  reusing input mint ${inputMint.toBase58()}`);
+} else {
+  inputMint = await createMint(connection, payer, payer.publicKey, null, INPUT_DECIMALS);
+  console.log(
+    `  created input mint ${inputMint.toBase58()} (${INPUT_DECIMALS} decimals, authority = payer)`,
+  );
+}
+
+const payerInputAta = await getOrCreateAssociatedTokenAccount(
+  connection,
+  payer,
+  inputMint,
+  payer.publicKey,
+);
+if (payerInputAta.amount < INPUT_TO_PAYER / 2n) {
+  await mintTo(connection, payer, inputMint, payerInputAta.address, payer, INPUT_TO_PAYER);
+  console.log(`  minted ${formatUnits(INPUT_TO_PAYER, INPUT_DECIMALS)} ${INPUT_SYMBOL} to the payer`);
+}
+
+// The liquidity wallet's receiving account, created up front like the
+// treasury's below, so a simulated swap is plain transfers.
+await getOrCreateAssociatedTokenAccount(connection, payer, inputMint, liquidity.publicKey);
+
 // ------------------------------------------------------------- treasury
 //
 // The treasury is whatever the live devnet config already names. It is only
@@ -131,6 +177,42 @@ await admin
     { onConflict: 'mint' },
   )
   .throwOnError();
+
+await admin
+  .from('test_mints')
+  .upsert(
+    { mint: inputMint.toBase58(), cluster: 'devnet', note: 'evenshock devnet harness swap-input token; authority held by scripts/devnet' },
+    { onConflict: 'mint' },
+  )
+  .throwOnError();
+
+// The swap-input allow-list row. Rotation rule mirrors payment_config: any
+// other devnet row goes inactive so exactly one input token is live, and a
+// stale row cannot quote against a mint the payer no longer holds.
+await admin
+  .from('accepted_input_tokens')
+  .update({ active: false })
+  .eq('cluster', 'devnet')
+  .neq('mint', inputMint.toBase58())
+  .throwOnError();
+
+await admin
+  .from('accepted_input_tokens')
+  .upsert(
+    {
+      mint: inputMint.toBase58(),
+      cluster: 'devnet',
+      symbol: INPUT_SYMBOL,
+      name: 'EvenShock devnet test token',
+      decimals: INPUT_DECIMALS,
+      active: true,
+      harness_rate_usdc: INPUT_RATE_USDC,
+      liquidity_wallet: liquidity.publicKey.toBase58(),
+    },
+    { onConflict: 'mint' },
+  )
+  .throwOnError();
+console.log(`  accepted_input_tokens: ${INPUT_SYMBOL} @ ${INPUT_RATE_USDC} USDC, liquidity ${liquidity.publicKey.toBase58()}`);
 
 if (cfgRows[0].usdc_mint !== mint.toBase58()) {
   // Rotate rather than edit: the old row stays readable for any intent that
@@ -176,6 +258,11 @@ writeState({
   treasury,
   payer: payer.publicKey.toBase58(),
   decoy: decoy.publicKey.toBase58(),
+  input_mint: inputMint.toBase58(),
+  input_symbol: INPUT_SYMBOL,
+  input_decimals: INPUT_DECIMALS,
+  input_rate_usdc: INPUT_RATE_USDC,
+  liquidity: liquidity.publicKey.toBase58(),
   user1: { address: s1.address, id: s1.userId },
   user2: { address: s2.address, id: s2.userId },
 });

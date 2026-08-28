@@ -175,6 +175,87 @@ const outcome = await page.evaluate(
   { intent: INTENT },
 );
 
+// ============================================================ swap-and-pay
+//
+// The same trap, for the swap path: `sendSwap` builds the atomic
+// swap-and-pay transaction — input leg, USDC leg, and the 0-lamport
+// self-transfer carrying the reference — through the same dynamically
+// imported libraries, in the same runtime that once had no Buffer. The stub
+// wallet captures the transaction; the assertions below decode both transfer
+// amounts back out of the encoded instructions, across DIFFERENT decimals (9
+// for the input token, 6 for USDC), because a scaling bug between the two is
+// exactly the kind that credits a thousand times the money.
+
+const SWAP_QUOTE = {
+  provider: 'devnet_harness',
+  input_mint: 'So11111111111111111111111111111111111111112',
+  input_symbol: 'tSOL',
+  input_decimals: 9,
+  swap_mode: 'ExactOut',
+  quoted_input_amount: 0.006666667,
+  quoted_input_raw: '6666667',
+  quoted_usdc_out: 1,
+  usdc_out_raw: '1000000',
+  min_usdc_out: 1,
+  min_chips: 100,
+  chips_per_usdc: 100,
+  slippage_bps: 0,
+  liquidity_wallet: '9zqPQ8kZ7YvcRAcVYAvPd1sfxAo4cCP6qMDkGnFsCZk7',
+};
+
+const swapOutcome = await page.evaluate(
+  async ({ intent, quote }) => {
+    const out = {};
+    try {
+      const mod = await import('/evenshock/src/data/purchase.ts');
+      let captured = null;
+      const wallet = {
+        publicKey: { toBase58: () => 'D9bzBJ2Sv96XVK9udrhWVPNKCg2pSQzKzGUoKvujBSRF' },
+        signAndSendTransaction: async (tx) => {
+          captured = tx;
+          return { signature: 'W'.repeat(88) };
+        },
+      };
+
+      const fresh = { ...quote, swap_quote_expires_at: new Date(Date.now() + 60_000).toISOString() };
+      const res = await mod.sendSwap(intent, fresh, wallet);
+      out.signature = res.signature;
+
+      const ixs = captured?.instructions ?? [];
+      out.instructionCount = ixs.length;
+
+      const decodeTransfer = (ix) => {
+        const data = Uint8Array.from(ix.data);
+        let amount = 0n;
+        for (let i = 8; i >= 1; i -= 1) amount = (amount << 8n) | BigInt(data[i]);
+        return { tag: data[0], amount: amount.toString(), decimals: data[9] };
+      };
+      // Instruction order is part of the shape: fee, input leg, USDC leg, ref.
+      out.input = ixs[1] ? decodeTransfer(ixs[1]) : null;
+      out.usdc = ixs[2] ? decodeTransfer(ixs[2]) : null;
+
+      const refIx = ixs[3];
+      const refKey = (refIx?.keys ?? []).find((k) => k.pubkey.toBase58() === intent.reference);
+      out.referenceOnNoop = !!refKey;
+      out.referenceReadOnly = refKey ? !refKey.isWritable && !refKey.isSigner : null;
+      out.noopIsSystemTransfer = refIx?.programId?.toBase58?.() === '11111111111111111111111111111111';
+
+      // A lapsed quote must be refused before the wallet is ever asked.
+      const stale = { ...quote, swap_quote_expires_at: new Date(Date.now() - 1_000).toISOString() };
+      try {
+        await mod.sendSwap(intent, stale, wallet);
+        out.staleRefused = false;
+      } catch (e) {
+        out.staleRefused = String(e?.message ?? e) === 'quote_expired';
+      }
+    } catch (e) {
+      out.error = String(e?.message ?? e);
+    }
+    return out;
+  },
+  { intent: INTENT, quote: SWAP_QUOTE },
+);
+
 // ======================================================= storage-hostile round
 //
 // The second bug of the same family, found auditing for the first.
@@ -264,6 +345,37 @@ check(
 check('the instruction is TransferChecked', outcome.tag === 12, outcome);
 check(`the amount is exactly ${EXPECTED_RAW} base units`, outcome.amountRaw === EXPECTED_RAW, outcome);
 check('the decimals match the intent', outcome.decimals === INTENT.usdc_decimals, outcome);
+
+console.log('');
+check('sendSwap built and handed over ONE transaction', !swapOutcome.error, swapOutcome);
+check('one signature came back from the swap', typeof swapOutcome.signature === 'string', swapOutcome);
+check(
+  'four instructions: fee, input leg, USDC leg, reference',
+  swapOutcome.instructionCount === 4,
+  swapOutcome,
+);
+check(
+  `the input leg moves exactly ${SWAP_QUOTE.quoted_input_raw} base units at 9 decimals`,
+  swapOutcome.input?.tag === 12 &&
+    swapOutcome.input?.amount === SWAP_QUOTE.quoted_input_raw &&
+    swapOutcome.input?.decimals === SWAP_QUOTE.input_decimals,
+  swapOutcome,
+);
+check(
+  `the USDC leg moves exactly ${SWAP_QUOTE.usdc_out_raw} base units at 6 decimals`,
+  swapOutcome.usdc?.tag === 12 &&
+    swapOutcome.usdc?.amount === SWAP_QUOTE.usdc_out_raw &&
+    swapOutcome.usdc?.decimals === INTENT.usdc_decimals,
+  swapOutcome,
+);
+check(
+  'the reference rides the 0-lamport self-transfer, read-only, non-signer',
+  swapOutcome.referenceOnNoop === true &&
+    swapOutcome.referenceReadOnly === true &&
+    swapOutcome.noopIsSystemTransfer === true,
+  swapOutcome,
+);
+check('a lapsed quote is refused before the wallet is asked', swapOutcome.staleRefused === true, swapOutcome);
 
 console.log('');
 check('a round starts in a browser that refuses storage', storage.started === true, storage);

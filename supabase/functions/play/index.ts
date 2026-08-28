@@ -37,6 +37,13 @@ import {
   type MatchFormat,
 } from './rules.ts';
 import { PRICED_THEMES, economyRates, themePrice } from './economy.ts';
+import {
+  fetchJupiterQuote,
+  fetchJupiterSwapInstructions,
+  quoteAmounts,
+  summarizeRoute,
+} from './jupiter.ts';
+import { collectAccountKeys } from './txkeys.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -76,6 +83,12 @@ const ERROR_STATUS: Record<string, number> = {
   // self-transfer the chain records as a zero delta. 409: the request is
   // coherent, the wallet is the thing that cannot work.
   wallet_is_treasury: 409,
+  // Swap quotes. 503 for the aggregator being unreachable — the USDC-direct
+  // path is unaffected and the client is expected to degrade to it.
+  swap_unavailable: 503,
+  unsupported_input_mint: 400,
+  intent_not_open: 409,
+  quote_too_small: 400,
 };
 
 const isChoice = (v: unknown): v is Choice => CHOICES.includes(v as Choice);
@@ -339,6 +352,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return CHAIN ? await createIntent(CHAIN, db, userId, body) : CHAIN_UNCONFIGURED();
     case 'confirm_payment':
       return CHAIN ? await confirmPayment(CHAIN, db, userId, body) : CHAIN_UNCONFIGURED();
+    case 'quote_swap':
+      return CHAIN ? await quoteSwap(CHAIN, db, userId, body) : CHAIN_UNCONFIGURED();
     case 'reconcile':
       return CHAIN ? await reconcile(CHAIN, db, userId) : CHAIN_UNCONFIGURED();
     case 'geo':
@@ -710,6 +725,12 @@ interface ChainConfig {
   readonly cluster: 'devnet' | 'mainnet-beta';
   readonly treasury: string;
   readonly usdcMint: string;
+  // The treasury's USDC token account, pinned in env like the treasury itself,
+  // because Jupiter's `destinationTokenAccount` must name the token account,
+  // not the owner. OPTIONAL rather than all-or-nothing: only the mainnet swap
+  // route needs it, and its absence fails only that route closed
+  // (swap_unavailable) — a devnet deploy without it loses nothing.
+  readonly treasuryUsdcAta: string | null;
 }
 
 function readChainConfig(): ChainConfig | null {
@@ -719,7 +740,8 @@ function readChainConfig(): ChainConfig | null {
   const usdcMint = Deno.env.get('SOLANA_USDC_MINT') ?? '';
   if (!rpcUrl || !cluster || !treasury || !usdcMint) return null;
   if (cluster !== 'devnet' && cluster !== 'mainnet-beta') return null;
-  return { rpcUrl, cluster, treasury, usdcMint };
+  const treasuryUsdcAta = Deno.env.get('TREASURY_USDC_ATA') || null;
+  return { rpcUrl, cluster, treasury, usdcMint, treasuryUsdcAta };
 }
 
 const CHAIN: ChainConfig | null = readChainConfig();
@@ -774,6 +796,15 @@ function formatUnits(raw: bigint, decimals: number): string {
   return `${negative ? '-' : ''}${whole}${frac ? '.' + frac : ''}`;
 }
 
+/** Decimal string to raw base units. Refuses excess precision — this is money. */
+function parseUnits(value: string, decimals: number): bigint {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(value);
+  if (!m) throw new Error(`not a decimal amount: ${value}`);
+  const frac = m[2] ?? '';
+  if (frac.length > decimals) throw new Error(`more than ${decimals} decimals: ${value}`);
+  return BigInt(m[1]) * 10n ** BigInt(decimals) + BigInt(frac.padEnd(decimals, '0') || '0');
+}
+
 interface IntentRow {
   id: string;
   user_id: string;
@@ -782,6 +813,10 @@ interface IntentRow {
   treasury_address: string;
   usdc_mint: string;
   usdc_decimals: number;
+  // Present when loaded via loadIntent; reconcile builds rows without them.
+  status?: string;
+  expected_usdc?: number;
+  chips_per_usdc?: number;
 }
 
 type ChainResult =
@@ -819,9 +854,10 @@ async function verifyOnChain(chain: ChainConfig, intent: IntentRow, signature: s
   if (!tx) return { kind: 'pending' };
   if (tx.meta?.err) return { kind: 'failed' };
 
-  const keys: string[] = (tx.transaction?.message?.accountKeys ?? []).map((k: any) =>
-    typeof k === 'string' ? k : k.pubkey,
-  );
+  // Static keys plus lookup-table-loaded keys (see txkeys.ts): a versioned
+  // transaction can carry a binding through an address lookup table, and the
+  // check must be independent of how the key travelled.
+  const keys = collectAccountKeys(tx);
   if (!keys.includes(intent.reference)) {
     return { kind: 'not_ours', why: 'reference_absent' };
   }
@@ -857,7 +893,9 @@ async function loadIntent(
   }
   const { data, error } = await db
     .from('payment_intents')
-    .select('id, user_id, cluster, reference, treasury_address, usdc_mint, usdc_decimals')
+    .select(
+      'id, user_id, cluster, reference, treasury_address, usdc_mint, usdc_decimals, status, expected_usdc, chips_per_usdc',
+    )
     .eq('id', intentId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -971,6 +1009,227 @@ async function confirmPayment(chain: ChainConfig, db: SupabaseClient, userId: st
   if (refused) return refused;
 
   return json({ status: 'credited', ...data });
+}
+
+// ---------------------------------------------------------------- quote_swap
+//
+// The player's side of a swap-routed purchase: "what does 100 chips cost in
+// the token I actually hold?" The treasury side never changes — it receives
+// the intent's frozen USDC mint, verified by the same treasury-delta check,
+// which is why confirm_payment, credit_purchase and reconcile need no
+// knowledge that a swap happened at all.
+//
+// The quote is PROXIED here rather than fetched by the client so that it can
+// be rate-limited (a new outbound dependency on a money path), recorded on the
+// intent for disputes, and validated against the server-side token allow-list
+// — and so the browser's CSP never needs a new host.
+
+const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const JUPITER_BASE = 'https://lite-api.jup.ag/swap/v1';
+const JUPITER_TIMEOUT_MS = 8_000;
+const SWAP_SLIPPAGE_BPS = 100;
+
+interface AcceptedToken {
+  mint: string;
+  cluster: string;
+  symbol: string;
+  decimals: number;
+  harness_rate_usdc: number | null;
+  liquidity_wallet: string | null;
+}
+
+async function quoteSwap(chain: ChainConfig, db: SupabaseClient, userId: string, body: Record<string, unknown>) {
+  // Hard 429 is fine at quote time, unlike confirm_payment's soft answer: no
+  // money is in flight yet, so refusing loudly strands nothing.
+  const { data: allowed, error: rlErr } = await db.rpc('take_rate_token', {
+    p_user_id: userId,
+    p_action: 'quote_swap',
+  });
+  if (rlErr) return fail('db_error', rlErr.message, 500);
+  if (allowed === false) return fail('rate_limited', 'Too many quote requests', 429);
+
+  const { intent, refusal } = await loadIntent(chain, db, userId, body.intent_id);
+  if (refusal) return refusal;
+  if (intent!.status !== 'pending') return fail('intent_not_open', 'Intent is not open', 409);
+
+  // Shape-check BEFORE the mint string touches a lookup or a URL.
+  const inputMint = body.input_mint;
+  if (typeof inputMint !== 'string' || !BASE58_RE.test(inputMint)) {
+    return fail('bad_request', 'input_mint required', 400);
+  }
+  if (inputMint === intent!.usdc_mint) {
+    // "Swap USDC to USDC" is the direct path wearing a costume.
+    return fail('unsupported_input_mint', 'Pay USDC directly instead', 400);
+  }
+
+  // The allow-list is the authority, re-checked here on every quote — the
+  // client's copy of this table is for rendering a picker, nothing more.
+  const { data: tok, error: tokErr } = await db
+    .from('accepted_input_tokens')
+    .select('mint, cluster, symbol, decimals, harness_rate_usdc, liquidity_wallet')
+    .eq('mint', inputMint)
+    .eq('cluster', intent!.cluster)
+    .eq('active', true)
+    .maybeSingle<AcceptedToken>();
+  if (tokErr) return fail('db_error', tokErr.message, 500);
+  if (!tok) return fail('unsupported_input_mint', 'Token not accepted', 400);
+
+  const usdcOut = (intent!.expected_usdc ?? 1).toFixed(intent!.usdc_decimals);
+  const usdcOutRaw = parseUnits(usdcOut, intent!.usdc_decimals);
+
+  if (chain.cluster === 'devnet') {
+    return await devnetHarnessQuote(db, userId, intent!, tok, usdcOut, usdcOutRaw);
+  }
+  return await jupiterQuote(chain, db, userId, intent!, tok, body, usdcOutRaw);
+}
+
+/**
+ * Devnet swap provider. Jupiter does not exist on devnet — its API serves
+ * mainnet only — and devnet is the only cluster this deploy can reach. So the
+ * devnet provider is the harness itself: a fixed rate from the allow-list row
+ * and a liquidity wallet that receives the input leg. The client builds a real
+ * atomic multi-instruction transaction from this quote, which exercises every
+ * invariant WE own — multi-instruction verification, reference binding, quote
+ * lifecycle, replay, reconciliation, conservation — live on devnet. The
+ * Jupiter HTTP integration below is what fixtures cover instead.
+ */
+async function devnetHarnessQuote(
+  db: SupabaseClient,
+  userId: string,
+  intent: IntentRow,
+  tok: AcceptedToken,
+  usdcOut: string,
+  usdcOutRaw: bigint,
+) {
+  // A devnet row without a rate or a liquidity wallet is a provider that
+  // cannot quote — the same degraded answer an unreachable Jupiter gives, and
+  // the USDC-direct path is expected to carry on.
+  if (tok.harness_rate_usdc == null || tok.harness_rate_usdc <= 0 || !tok.liquidity_wallet) {
+    return fail('swap_unavailable', 'Devnet swap provider not configured for this token', 503);
+  }
+
+  // input = usdcOut / rate, in integer math, rounded UP so the treasury never
+  // receives less than the quoted USDC because of our own rounding.
+  const rateRaw = parseUnits(tok.harness_rate_usdc.toFixed(6), 6);
+  const scale = 10n ** BigInt(tok.decimals);
+  const inputRaw = (usdcOutRaw * scale + rateRaw - 1n) / rateRaw;
+  const quotedInput = formatUnits(inputRaw, tok.decimals);
+
+  const { data, error } = await db.rpc('record_swap_quote', {
+    p_user_id: userId,
+    p_intent_id: intent.id,
+    p_input_mint: tok.mint,
+    p_swap_mode: 'ExactOut',
+    p_quoted_input: quotedInput,
+    p_quoted_usdc_out: usdcOut,
+    p_min_usdc_out: usdcOut,
+    p_slippage_bps: 0,
+    p_route: {
+      provider: 'devnet_harness',
+      rate_usdc: tok.harness_rate_usdc,
+      liquidity_wallet: tok.liquidity_wallet,
+    },
+  });
+  if (error) return fail('db_error', error.message, 500);
+  const refused = rpcError(data);
+  if (refused) return refused;
+
+  return json({
+    provider: 'devnet_harness',
+    ...data,
+    quoted_input_raw: inputRaw.toString(),
+    usdc_out_raw: usdcOutRaw.toString(),
+    liquidity_wallet: tok.liquidity_wallet,
+  });
+}
+
+/**
+ * Mainnet swap provider: Jupiter, proxied. DEAD CODE TODAY, deliberately —
+ * mainnet ChainConfig is fail-closed off, so this branch cannot run in any
+ * current deploy. It ships now so the mainnet activation checklist flips a
+ * config, not a development project, and it is exercised by contract tests
+ * against recorded API fixtures (see jupiter.test.ts) because that is
+ * the honest ceiling: there is no Jupiter on the only reachable cluster.
+ *
+ * ExactOut is tried first (the treasury receives exactly the quoted USDC, so
+ * the displayed chip amount is exact and slippage is bounded on the input
+ * side). ExactOut route coverage is narrow, so ExactIn at 100 bps is the
+ * well-worn path: the on-chain minimum-out means under-delivery below the
+ * quoted floor reverts the whole transaction — the player pays nothing but
+ * the network fee, and is never credited less than the number they were shown.
+ */
+async function jupiterQuote(
+  chain: ChainConfig,
+  db: SupabaseClient,
+  userId: string,
+  intent: IntentRow,
+  tok: AcceptedToken,
+  body: Record<string, unknown>,
+  usdcOutRaw: bigint,
+) {
+  // Jupiter does not create the destination token account; without the pinned
+  // treasury USDC ATA the route cannot settle to the treasury, so the swap
+  // path — and only the swap path — fails closed.
+  if (!chain.treasuryUsdcAta) {
+    return fail('swap_unavailable', 'TREASURY_USDC_ATA not configured', 503);
+  }
+  const payer = body.payer;
+  if (typeof payer !== 'string' || !BASE58_RE.test(payer)) {
+    return fail('bad_request', 'payer required', 400);
+  }
+
+  try {
+    const outcome = await fetchJupiterQuote(fetch, JUPITER_BASE, {
+      inputMint: tok.mint,
+      outputMint: intent.usdc_mint,
+      usdcOutRaw,
+      inputDecimals: tok.decimals,
+      slippageBps: SWAP_SLIPPAGE_BPS,
+      timeoutMs: JUPITER_TIMEOUT_MS,
+    });
+    const ix = await fetchJupiterSwapInstructions(fetch, JUPITER_BASE, {
+      quote: outcome.quote,
+      payer,
+      destinationTokenAccount: chain.treasuryUsdcAta,
+      timeoutMs: JUPITER_TIMEOUT_MS,
+    });
+
+    const { quotedInputRaw, quotedUsdcRaw, minUsdcRaw } = quoteAmounts(outcome);
+
+    const { data, error } = await db.rpc('record_swap_quote', {
+      p_user_id: userId,
+      p_intent_id: intent.id,
+      p_input_mint: tok.mint,
+      p_swap_mode: outcome.swapMode,
+      p_quoted_input: formatUnits(quotedInputRaw, tok.decimals),
+      p_quoted_usdc_out: formatUnits(quotedUsdcRaw, intent.usdc_decimals),
+      p_min_usdc_out: formatUnits(minUsdcRaw, intent.usdc_decimals),
+      p_slippage_bps: SWAP_SLIPPAGE_BPS,
+      p_route: summarizeRoute(outcome.quote),
+    });
+    if (error) return fail('db_error', error.message, 500);
+    const refused = rpcError(data);
+    if (refused) return refused;
+
+    return json({
+      provider: 'jupiter',
+      ...data,
+      quoted_input_raw: quotedInputRaw.toString(),
+      usdc_out_raw: quotedUsdcRaw.toString(),
+      instructions: {
+        compute_budget: ix.computeBudgetInstructions ?? [],
+        setup: ix.setupInstructions ?? [],
+        swap: ix.swapInstruction,
+        cleanup: ix.cleanupInstruction ?? null,
+      },
+      address_lookup_table_addresses: ix.addressLookupTableAddresses ?? [],
+    });
+  } catch (err) {
+    // The aggregator being down is not a payment verdict and must not strand
+    // the player: the client degrades to the USDC-direct path, which shares
+    // nothing with this code.
+    return fail('swap_unavailable', err instanceof Error ? err.message : 'aggregator unreachable', 503);
+  }
 }
 
 /**

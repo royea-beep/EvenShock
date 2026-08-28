@@ -26,6 +26,25 @@ The list is short on purpose. Long checklists get skimmed; short ones get done.
 - [ ] The Supabase CSP allow-list in `public/.htaccess` includes the mainnet
       RPC host (not just `api.devnet.solana.com`)
 
+## Swap payments (pay-with-any-token via Jupiter) — only if enabling swaps
+
+- [ ] `TREASURY_USDC_ATA` is set on the play edge function: the treasury's
+      USDC **token account** (not the owner address). Jupiter's
+      `destinationTokenAccount` does NOT create the account — it must already
+      exist. Without this env the swap path fails closed (`swap_unavailable`);
+      USDC-direct is unaffected.
+- [ ] The mainnet rows in `public.accepted_input_tokens` (wSOL, USDT, mSOL —
+      seeded inactive) are reviewed and flipped `active=true` one by one.
+      Keep the list tight; every mint here is a token we advertise as payable.
+- [ ] A browser RPC for mainnet is configured (`browserRpc` in
+      `src/data/purchase.ts` deliberately throws on mainnet today), and the
+      CSP `connect-src` includes that host. The client never talks to Jupiter
+      directly — quotes are proxied — so no `jup.ag` host is needed in CSP.
+- [ ] Manual first swap purchase from an owner wallet: pay in SOL, treasury
+      receives USDC, chips credit at `floor(delivered × rate)`, and the
+      `payment_intents` row records the quote (mode, amounts, route
+      fingerprint).
+
 ## Database backups (this project, this plan)
 
 - [ ] **PITR add-on enabled at the 7-day tier (~$100/mo).** Non-negotiable.

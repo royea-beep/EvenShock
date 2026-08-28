@@ -17,6 +17,7 @@
 import {
   ComputeBudgetProgram,
   PublicKey,
+  SystemProgram,
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
@@ -87,6 +88,101 @@ export async function sendUsdc(
   tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000 }));
   if (createIx) tx.add(createIx);
   tx.add(transferIx);
+
+  if (confirm) {
+    return await sendAndConfirmTransaction(connection, tx, [payer], {
+      commitment: 'confirmed',
+    });
+  }
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  tx.recentBlockhash = blockhash;
+  tx.lastValidBlockHeight = lastValidBlockHeight;
+  tx.feePayer = payer.publicKey;
+  tx.sign(payer);
+  return await connection.sendRawTransaction(tx.serialize(), { preflightCommitment: 'confirmed' });
+}
+
+/**
+ * The simulated swap-and-pay: ONE atomic transaction carrying the input leg
+ * (tSOL → liquidity wallet), the settlement leg (USDC → treasury), and a
+ * 0-lamport self-transfer whose only job is to carry the intent's reference as
+ * a static account key. This is the same shape the browser's `sendSwap` builds
+ * from a devnet quote, and the same shape — minus Jupiter's own route
+ * instruction — that a mainnet routed swap settles into.
+ *
+ * `usdcAmountRaw` is a parameter rather than derived from the quote so the
+ * suite can UNDER-deliver on purpose: devnet has no on-chain minimum-out (that
+ * guard is Jupiter's program), so the property provable here is the safe
+ * degradation — the server credits floor(actual × rate), never the quote.
+ */
+export async function sendSwapSim(
+  connection,
+  {
+    payer,
+    inputMint,
+    inputAmountRaw,
+    inputDecimals,
+    liquidityOwner,
+    usdcMint,
+    usdcAmountRaw,
+    usdcDecimals,
+    toOwner,
+    reference = null,
+    confirm = true,
+  },
+) {
+  const inputKey = new PublicKey(inputMint);
+  const usdcKey = new PublicKey(usdcMint);
+
+  const fromInput = getAssociatedTokenAddressSync(inputKey, payer.publicKey, true);
+  const fromUsdc = getAssociatedTokenAddressSync(usdcKey, payer.publicKey, true);
+  const { ata: toInput, createIx: createInputIx } = await ensureAta(
+    connection,
+    payer,
+    inputKey,
+    new PublicKey(liquidityOwner),
+  );
+  const { ata: toUsdc, createIx: createUsdcIx } = await ensureAta(
+    connection,
+    payer,
+    usdcKey,
+    new PublicKey(toOwner),
+  );
+
+  const inputIx = createTransferCheckedInstruction(
+    fromInput,
+    inputKey,
+    toInput,
+    payer.publicKey,
+    inputAmountRaw,
+    inputDecimals,
+  );
+  const usdcIx = createTransferCheckedInstruction(
+    fromUsdc,
+    usdcKey,
+    toUsdc,
+    payer.publicKey,
+    usdcAmountRaw,
+    usdcDecimals,
+  );
+
+  const tx = new Transaction();
+  tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000 }));
+  if (createInputIx) tx.add(createInputIx);
+  if (createUsdcIx) tx.add(createUsdcIx);
+  tx.add(inputIx);
+  tx.add(usdcIx);
+
+  if (reference) {
+    const refIx = SystemProgram.transfer({
+      fromPubkey: payer.publicKey,
+      toPubkey: payer.publicKey,
+      lamports: 0,
+    });
+    refIx.keys.push({ pubkey: new PublicKey(reference), isSigner: false, isWritable: false });
+    tx.add(refIx);
+  }
 
   if (confirm) {
     return await sendAndConfirmTransaction(connection, tx, [payer], {

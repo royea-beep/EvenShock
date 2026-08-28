@@ -555,6 +555,38 @@ export const copy = {
     failedBody:
       "Your payment is on the blockchain and we couldn't match it to this purchase yet. Don't pay again — our reconciler scans for it and will credit you. Contact support if it hasn't landed in a few minutes.",
     failedClose: 'Close',
+
+    /**
+     * Paying with a token other than USDC. The swap is routed so the treasury
+     * still receives USDC; the player sees the cost in the token they hold.
+     * Two rules for this copy: the guaranteed number is the one promised
+     * ("at least N chips" — never a number the swap could undercut), and an
+     * expired quote must say plainly that nothing was charged, because
+     * "expired" next to a payment flow reads as "my money vanished".
+     */
+    tokenPickerLabel: 'Pay with',
+    tokenUsdcLabel: 'USDC',
+    quoting: 'Getting a price…',
+    quoteTitle: (sym: string) => `Pay with ${sym}`,
+    // ExactOut: the input is bounded, the chips are exact.
+    quoteLineExactOut: (input: string, sym: string, chips: number) =>
+      `Up to ${input} ${sym} for ${chips} chips`,
+    // ExactIn: the input is exact, the chips have a guaranteed floor.
+    quoteLineExactIn: (input: string, sym: string, minChips: number) =>
+      `${input} ${sym} for at least ${minChips} chips`,
+    quoteExplainer:
+      "The swap settles at the market price when it lands. You'll never get fewer chips than shown here — if the price moves too far, the whole payment fails and you keep your tokens.",
+    quoteCountdown: (secs: number) => `Price valid for ${secs}s`,
+    quotePay: 'Pay now',
+    quoteRefresh: 'Refresh price',
+    quoteExpiredTitle: 'That price expired',
+    quoteExpiredBody:
+      'Prices are only held for a minute, and this one lapsed before you signed. Nothing was charged and nothing left your wallet. Refresh to see the current price.',
+    swapUnavailableTitle: 'Token payments unavailable right now',
+    swapUnavailableBody:
+      "We couldn't price that token — the swap service isn't reachable. You haven't been charged. Buying with USDC directly still works.",
+    swapUnavailableNote: 'Other tokens are unavailable right now — USDC still works.',
+    solFeeNote: 'Paying in SOL keeps a little back for network fees.',
   },
 
   /**
