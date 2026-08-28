@@ -22,6 +22,8 @@
  */
 import { execSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
+import { createClient } from '@supabase/supabase-js';
+import { SUPABASE_URL, SERVICE_ROLE_KEY } from './harness/env.mjs';
 
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8' }).trim();
 const quiet = (cmd, fallback = '') => {
@@ -71,6 +73,50 @@ function flags() {
   ]);
 }
 
+/**
+ * Server-side flags, read from the LIVE database — never from this checkout
+ * and never from memory. This section exists because a completion report once
+ * hand-wrote "geo_blocking on" while the database said `enabled = false`: the
+ * system was right and the report was wrong, about a compliance control on the
+ * mainnet checklist. A status line that misreports a flag is exactly how
+ * something ships in the wrong state.
+ *
+ * The values come from the database's OWN decision functions —
+ * `geo_blocking_enabled()` (missing row = ON) and `flag_enabled()` (missing
+ * row = off) — not from re-reading `feature_flags` here, because duplicating
+ * their fail-open/fail-closed semantics in JS is how the report and the
+ * server drift apart again.
+ *
+ * When the flags cannot be read (no service key, no network), that is what
+ * gets printed. An unreadable compliance flag is a visible problem; a guessed
+ * one is a hidden one.
+ */
+async function serverFlags() {
+  const FLAGS = [
+    ['geo_blocking', 'geo_blocking_enabled', {}],
+    ['stake_tables', 'flag_enabled', { p_key: 'stake_tables' }],
+  ];
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+    return FLAGS.map(([name]) => [name, 'unreadable — set SUPABASE_SERVICE_ROLE_KEY (.env.local)']);
+  }
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  // One 5s budget shared by both reads: a status report that hangs is a
+  // status report nobody runs.
+  const deadline = new Promise((resolve) => {
+    const t = setTimeout(() => resolve({ error: { message: 'timeout' } }), 5_000);
+    t.unref?.();
+  });
+  return await Promise.all(
+    FLAGS.map(async ([name, fn, args]) => {
+      const { data, error } = await Promise.race([admin.rpc(fn, args), deadline]);
+      if (error) return [name, `unreadable — db unreachable (${error.message})`];
+      return [name, data === true ? 'ON' : 'off'];
+    }),
+  );
+}
+
 const migrationCount = readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql')).length;
 
 const bar = '─'.repeat(64);
@@ -102,5 +148,8 @@ console.log('                    Server capability is not the same as player rea
 
 console.log('\n  FLAGS IN THE DEPLOYED BUILD');
 for (const [name, value] of flags()) console.log(`    ${name.padEnd(14)}${value}`);
+
+console.log('\n  SERVER FLAGS — read from the live database, not from this checkout');
+for (const [name, value] of await serverFlags()) console.log(`    ${name.padEnd(14)}${value}`);
 
 console.log(`\n${bar}\n`);
