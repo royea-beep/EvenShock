@@ -30,6 +30,9 @@
  */
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
+import { Buffer } from 'node:buffer';
+import { PublicKey } from '@solana/web3.js';
+import { ACCOUNT_SIZE, AccountLayout, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { chromiumLaunchOptions } from './chromium.mjs';
 
 const PORT = Number(process.env.EVENSHOCK_DEV_PORT ?? 5174);
@@ -91,11 +94,62 @@ await waitForServer();
 const browser = await chromium.launch(chromiumLaunchOptions());
 const page = await (await browser.newContext()).newPage();
 
-// The single RPC call, answered locally. A real blockhash is 32 base58 bytes
+// The payer's token account, as the send paths now READ it before opening the
+// wallet (the wrong-mint pre-check). A structurally valid SPL account —
+// getAccount() verifies the owning program and the 165-byte layout — encoded
+// here in Node with the real library, holding more than any case needs.
+// `tokenAccountMode` flips to 'absent' for the case that proves the refusal.
+let tokenAccountMode = 'funded';
+const fundedAccountB64 = (() => {
+  const data = Buffer.alloc(ACCOUNT_SIZE);
+  AccountLayout.encode(
+    {
+      mint: new PublicKey(INTENT.usdc_mint),
+      owner: new PublicKey('D9bzBJ2Sv96XVK9udrhWVPNKCg2pSQzKzGUoKvujBSRF'),
+      amount: 10n ** 15n,
+      delegateOption: 0,
+      delegate: PublicKey.default,
+      state: 1,
+      isNativeOption: 0,
+      isNative: 0n,
+      delegatedAmount: 0n,
+      closeAuthorityOption: 0,
+      closeAuthority: PublicKey.default,
+    },
+    data,
+  );
+  return data.toString('base64');
+})();
+
+// The RPC calls, answered locally. A real blockhash is 32 base58 bytes
 // and the library validates the shape, so this is a genuine-looking one rather
 // than a placeholder string.
 await page.route('https://api.devnet.solana.com/**', async (route) => {
   const body = route.request().postDataJSON?.() ?? {};
+  if (body.method === 'getAccountInfo') {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: body.id,
+        result: {
+          context: { slot: 1 },
+          value:
+            tokenAccountMode === 'funded'
+              ? {
+                  data: [fundedAccountB64, 'base64'],
+                  executable: false,
+                  lamports: 2_039_280,
+                  owner: TOKEN_PROGRAM_ID.toBase58(),
+                  rentEpoch: 0,
+                }
+              : null,
+        },
+      }),
+    });
+    return;
+  }
   if (body.method === 'getLatestBlockhash') {
     await route.fulfill({
       status: 200,
@@ -256,6 +310,39 @@ const swapOutcome = await page.evaluate(
   { intent: INTENT, quote: SWAP_QUOTE },
 );
 
+// ============================================================= wrong mint
+//
+// The wallet that holds NONE of the expected mint — the shape every wallet
+// funded from Circle's devnet faucet is in, since the faucet's USDC is a
+// different mint than the one payment_config accepts. This must be refused
+// BEFORE the wallet opens, with a code the UI can turn into plain words;
+// it used to surface as "wallet_error — Unexpected error" and cost a real
+// person an on-chain investigation.
+
+tokenAccountMode = 'absent';
+const wrongMint = await page.evaluate(
+  async ({ intent }) => {
+    const out = { walletAsked: false };
+    try {
+      const mod = await import('/evenshock/src/data/purchase.ts');
+      const wallet = {
+        publicKey: { toBase58: () => 'D9bzBJ2Sv96XVK9udrhWVPNKCg2pSQzKzGUoKvujBSRF' },
+        signAndSendTransaction: async () => {
+          out.walletAsked = true;
+          return { signature: 'X'.repeat(88) };
+        },
+      };
+      await mod.sendUsdc(intent, wallet);
+      out.threw = null;
+    } catch (e) {
+      out.threw = String(e?.message ?? e);
+      out.mintOnError = e?.mint ?? null;
+    }
+    return out;
+  },
+  { intent: INTENT },
+);
+
 // ======================================================= storage-hostile round
 //
 // The second bug of the same family, found auditing for the first.
@@ -376,6 +463,14 @@ check(
   swapOutcome,
 );
 check('a lapsed quote is refused before the wallet is asked', swapOutcome.staleRefused === true, swapOutcome);
+
+console.log('');
+check(
+  'a wallet with none of the expected mint is refused with a nameable code',
+  wrongMint.threw === 'expected_mint_absent' && wrongMint.mintOnError === INTENT.usdc_mint,
+  wrongMint,
+);
+check('and the wallet was never asked to sign', wrongMint.walletAsked === false, wrongMint);
 
 console.log('');
 check('a round starts in a browser that refuses storage', storage.started === true, storage);

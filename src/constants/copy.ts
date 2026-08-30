@@ -488,6 +488,13 @@ export const copy = {
   chipsPurchase: {
     buyTitle: 'Get 100 chips',
     buyPrice: 'for $1 in USDC (devnet)',
+    // Named on the card because Circle's devnet faucet hands out a mint this
+    // system deliberately does not accept (the game mints its own test
+    // dollar), and without this line every faucet-funded wallet walks into a
+    // refused payment. The EXACT mint address is not shown here — the client
+    // only learns it from an intent it was issued — so the failed modal names
+    // it instead.
+    mintNote: "Devnet uses the game's own test dollar — USDC from Circle's faucet is a different token and won't work here.",
     buyButton: 'Buy 100 chips',
     buyButtonBusy: 'Working…',
 
@@ -550,6 +557,21 @@ export const copy = {
     failedTitleUnspent: 'Payment not started',
     failedBodyUnspent:
       "Nothing left your wallet and you haven't been charged — this failed before the transaction was signed. You can safely try again.",
+
+    /**
+     * The wallet holds none (or not enough) of the mint this purchase needs.
+     * Detected BEFORE the wallet opens, so "nothing was charged" is exact.
+     * The most common way in: Circle's devnet faucet, whose USDC is a
+     * different mint than the game's test dollar. Named plainly, with the
+     * expected mint address, because "Unexpected error" sent a real person
+     * on-chain to diagnose what we could have just said.
+     */
+    wrongMintTitle: "Your wallet doesn't hold this token",
+    wrongMintBody: (mint: string) =>
+      `Nothing was charged — this purchase needs a token your wallet doesn't have. On devnet the game uses its own test dollar (mint ${mint}), and USDC from Circle's faucet is a different token that won't work here. Ask the operator to fund your wallet (npm run devnet:fund).`,
+    shortMintTitle: 'Not enough of the right token',
+    shortMintBody: (mint: string) =>
+      `Nothing was charged — your wallet holds some of the required token (mint ${mint}) but less than this purchase costs. Top it up and try again.`,
 
     failedTitle: 'Payment sent but not yet verified',
     failedBody:

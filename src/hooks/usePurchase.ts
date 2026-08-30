@@ -62,7 +62,15 @@ export type PurchaseState =
    * spent any is confusing at best; saying "try again" after they have paid
    * would invite a second payment, which is worse.
    */
-  | { kind: 'failed'; code: string; humanCause?: string; signed: boolean };
+  | {
+      kind: 'failed';
+      code: string;
+      humanCause?: string;
+      signed: boolean;
+      /** For the wrong-mint refusals: which mint the wallet was missing, so
+       *  the modal can name it. The intent legitimately told us. */
+      mint?: string;
+    };
 
 const CONFIRM_POLL_MS = 3_000;
 const CONFIRM_TIMEOUT_MS = 180_000;
@@ -170,6 +178,20 @@ export function usePurchase({ authenticated, onCredited }: UsePurchaseArgs): Pur
           // the window between the modal and the wallet lands here. Nothing
           // was signed.
           setState({ kind: 'quote_expired', intent, inputMint: quote.input_mint });
+          return;
+        }
+        if (message === 'expected_mint_absent' || message === 'expected_mint_insufficient') {
+          // The knowable, common failure: the wallet holds none (or not
+          // enough) of the mint this purchase needs — on devnet, usually a
+          // wallet funded from Circle's faucet, which is a DIFFERENT mint
+          // than the one payment_config accepts. Refused before the wallet
+          // opened, so nothing was signed and nothing left the wallet.
+          setState({
+            kind: 'failed',
+            code: message,
+            signed: false,
+            mint: (err as { mint?: string }).mint ?? intent.usdc_mint,
+          });
           return;
         }
         setState({

@@ -14,6 +14,7 @@
     "sync:rules": "node scripts/sync-rules.mjs",
     "devnet:setup": "node scripts/devnet/setup.mjs",
     "devnet:e2e": "node scripts/devnet/e2e.mjs",
+    "devnet:fund": "node scripts/devnet/fund.mjs",
     "e2e:nemesis-timing": "cross-env EVENSHOCK_LIVE=1 node scripts/harness/nemesis-timing.mjs",
     "e2e:rounds": "cross-env EVENSHOCK_LIVE=1 vitest run --config vitest.live.config.ts",
     "e2e:browser": "node scripts/harness/browser-latency.mjs",

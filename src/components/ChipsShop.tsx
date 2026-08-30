@@ -68,6 +68,7 @@ export function ChipsShop({ purchase }: Props) {
             {copy.chipsPurchase.buyTitle}
           </p>
           <p className="text-xs text-muted">{copy.chipsPurchase.buyPrice}</p>
+          <p className="text-xs text-muted">{copy.chipsPurchase.mintNote}</p>
         </div>
 
         {tokens.length > 0 && (
@@ -354,20 +355,33 @@ function FailedModal({ purchase }: { purchase: Purchase }) {
   // failure: nothing was signed, and USDC-direct still works. Its own copy,
   // because "payment not started" would leave them wondering what to change.
   const swapDown = state.code === 'swap_unavailable';
+  // A wallet that holds none of the expected mint — the Circle-faucet trap —
+  // detected before the wallet opened. Its own copy for the same reason as
+  // the treasury case: "try again" would send them round the same loop.
+  const mintAbsent = state.code === 'expected_mint_absent';
+  const mintShort = state.code === 'expected_mint_insufficient';
   const title = treasury
     ? copy.chipsPurchase.walletIsTreasuryTitle
     : swapDown
       ? copy.chipsPurchase.swapUnavailableTitle
-      : state.signed
-        ? copy.chipsPurchase.failedTitle
-        : copy.chipsPurchase.failedTitleUnspent;
+      : mintAbsent
+        ? copy.chipsPurchase.wrongMintTitle
+        : mintShort
+          ? copy.chipsPurchase.shortMintTitle
+          : state.signed
+            ? copy.chipsPurchase.failedTitle
+            : copy.chipsPurchase.failedTitleUnspent;
   const body = treasury
     ? copy.chipsPurchase.walletIsTreasuryBody
     : swapDown
       ? copy.chipsPurchase.swapUnavailableBody
-      : state.signed
-        ? copy.chipsPurchase.failedBody
-        : copy.chipsPurchase.failedBodyUnspent;
+      : mintAbsent
+        ? copy.chipsPurchase.wrongMintBody(state.mint ?? 'unknown')
+        : mintShort
+          ? copy.chipsPurchase.shortMintBody(state.mint ?? 'unknown')
+          : state.signed
+            ? copy.chipsPurchase.failedBody
+            : copy.chipsPurchase.failedBodyUnspent;
   return (
     <Overlay labelledBy="failed-title">
       <div className="space-y-2">

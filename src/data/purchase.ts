@@ -289,6 +289,35 @@ interface WalletLike {
 }
 
 /**
+ * Refuses, before any wallet interaction, a payer account that cannot cover
+ * the amount — thrown messages are codes the hook maps to their own copy,
+ * the same convention as 'quote_expired'.
+ *
+ * 'expected_mint_absent' means the wallet has no account for this mint at
+ * all: the knowable, common shape of "funded from Circle's devnet faucet,
+ * which is a different mint than the one payment_config accepts".
+ */
+async function assertHolds(
+  spl: typeof import('@solana/spl-token'),
+  connection: InstanceType<typeof import('@solana/web3.js').Connection>,
+  ata: import('@solana/web3.js').PublicKey,
+  neededRaw: bigint,
+  mint: string,
+): Promise<void> {
+  // The failing mint rides on the error so the modal can NAME the token the
+  // wallet is missing rather than gesture at "funds".
+  let held: bigint;
+  try {
+    held = (await spl.getAccount(connection, ata)).amount;
+  } catch {
+    throw Object.assign(new Error('expected_mint_absent'), { mint });
+  }
+  if (held < neededRaw) {
+    throw Object.assign(new Error('expected_mint_insufficient'), { mint });
+  }
+}
+
+/**
  * Sends the USDC transfer that pays this intent.
  *
  * The reference key is appended to the transfer instruction as a read-only,
@@ -339,6 +368,14 @@ export async function sendUsdc(
   const [whole, fraction = ''] = intent.expected_usdc.toFixed(intent.usdc_decimals).split('.');
   const amountRaw =
     BigInt(whole) * scale + BigInt(fraction.padEnd(intent.usdc_decimals, '0') || '0');
+
+  // BEFORE the wallet ever opens: does this wallet hold the EXPECTED mint at
+  // all? A wallet full of Circle's faucet USDC is the common way to fail here
+  // — devnet USDC and the harness test mint are different tokens — and
+  // without this check the failure surfaced as "wallet_error — Unexpected
+  // error", which told the player nothing. One extra RPC read, on a path that
+  // was about to ask for a signature anyway.
+  await assertHolds(spl, connection, fromAta, amountRaw, intent.usdc_mint);
 
   const ix = spl.createTransferCheckedInstruction(
     fromAta,
@@ -422,6 +459,13 @@ export async function sendSwap(
       spl.getAssociatedTokenAddress(usdcMint, payer),
       spl.getAssociatedTokenAddress(usdcMint, treasuryOwner, true),
     ]);
+
+    // The simulated devnet swap spends BOTH legs from this wallet, so both
+    // are checked before the wallet opens. (The Jupiter branch below is
+    // deliberately exempt: wrapAndUnwrapSol means native SOL funds the input,
+    // and an ATA read is the wrong question for it.)
+    await assertHolds(spl, connection, fromInputAta, BigInt(quote.quoted_input_raw), quote.input_mint);
+    await assertHolds(spl, connection, fromUsdcAta, BigInt(quote.usdc_out_raw), intent.usdc_mint);
 
     const inputIx = spl.createTransferCheckedInstruction(
       fromInputAta,
